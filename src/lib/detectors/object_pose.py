@@ -23,7 +23,7 @@ from lib.models.decode import object_pose_decode, _nms, _topk, _transpose_and_ga
 from lib.utils.post_process import object_pose_post_process
 
 from .base_detector import BaseDetector
-
+print(torch.__version__)
 def soft_nms_nvidia(src_boxes, sigma=0.5, Nt=0.3, threshold=0.001, method=0):
     N = src_boxes.shape[0]
     pos = 0
@@ -152,7 +152,7 @@ class ObjectPoseDetector(BaseDetector):
             forward_time = time.time()
 
             dets = object_pose_decode(
-                output['hm'], output['hps'], wh=wh, kps_displacement_std=hps_uncertainty, obj_scale=obj_scale,
+                heat=output['hm'], kps=output['hps'], wh=wh, kps_displacement_std=hps_uncertainty, obj_scale=obj_scale,
                 obj_scale_uncertainty=obj_scale_uncertainty,
                 reg=reg, hm_hp=hm_hp, hp_offset=hp_offset, tracking=tracking, tracking_hp=tracking_hp, opt=self.opt,
                 Inference=True)

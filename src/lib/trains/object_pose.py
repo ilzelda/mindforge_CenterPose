@@ -284,8 +284,8 @@ class ObjectPoseTrainer(BaseTrainer):
             # Predictions
             debugger.add_img(img, img_id='out_img_pred')
             for k in range(len(dets['scores'][i])):
+                # print(f"scores: {dets['scores'][i][k][0]}")
                 if dets['scores'][i][k][0] > opt.center_thresh:
-
                     if self.opt.reg_bbox:
                         debugger.add_coco_bbox(dets['bboxes'][i][k], dets['clses'][i][k],
                                                dets['scores'][i][k][0], img_id='out_img_pred')

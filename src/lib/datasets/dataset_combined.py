@@ -111,19 +111,28 @@ class ObjectPoseDataset(data.Dataset):
                       [1, 3], [1, 5], [3, 7], [5, 7]]
 
         # Todo: need to fix the path name
+        # opt.data_dir = /home/CenterPose/data/
         if opt.tracking_task == True:
             self.data_dir = os.path.join(opt.data_dir, 'outf_all')
         else:
-            self.data_dir = os.path.join(opt.data_dir, 'outf')
+            # default :  opt.data_dir = /home/CenterPose/data/
+            
+            # self.data_dir = os.path.join(opt.data_dir, 'outf')
+            self.data_dir = opt.data_dir
+            
 
         # # Debug only
-        # self.data_dir = os.path.join(opt.data_dir, 'outf_all_test')
 
-        self.img_dir = os.path.join(self.data_dir, f"{opt.c}_{split}")
+        # self.img_dir = os.path.join(self.data_dir, f"{opt.c}_{split}")
+        self.img_dir = os.path.join(self.data_dir, f"{opt.c}_{split}") # /home/CenterPose/data/opt.c/opt.c_split/
+        # print("for train, self.img_dir: ", self.img_dir)
 
         # Todo: take the test split as validation
         if split == 'val' and not os.path.isdir(self.img_dir):
             self.img_dir = os.path.join(self.data_dir, f"{opt.c}_test")
+            split = 'test'
+            # print("for val, self.img_dir: ", self.img_dir)
+
 
         self.max_objs = 10
         self._data_rng = np.random.RandomState(123)
@@ -171,7 +180,7 @@ class ObjectPoseDataset(data.Dataset):
                 opt_detector.load_model = f"../models/CenterPose/cup_cup_v1_sym_12_140.pth"
                 self.detector_cup = Detector_CenterPose(opt_detector)
 
-        print(f'==> initializing objectron {opt.c}_{split} data.')
+        # print(f'==> initializing objectron {opt.c}_{split} data.')
 
         #   Copy from DOPE code
         def loadimages(root, datastyle="json", extensions=['png']):
@@ -202,15 +211,27 @@ class ObjectPoseDataset(data.Dataset):
 
             explore(root)
 
-            return imgs
+            return imgs # [ ( img_path, video_id, frame_id, json_path ), ... ]
 
         def load_data(path, extensions):
             imgs = loadimages(path, extensions=extensions)
             return imgs
 
+        def load_data_custom(path, extensions):
+            imgs = []
+            with open(self.img_dir + f"/image_paths_{self.split}.txt", "r") as file:
+                for line in file:
+                    img_path = line.strip()
+                    imgs.append((img_path, None, None, img_path.replace(".jpg", ".json").replace(".png", ".json")))
+            
+            return imgs
+
         self.images = []
-        print(self.img_dir)
-        self.images += load_data(self.img_dir, extensions=["png", 'jpg'])
+        print("self.img_dir: ", self.img_dir)
+        if self.opt.custom:
+            self.images += load_data_custom(self.img_dir, extensions=["png", 'jpg'])
+        else:
+            self.images += load_data(self.img_dir, extensions=["png", 'jpg'])
         self.num_samples = len(self.images)
         print('Loaded {} {} samples'.format(split, self.num_samples))
 
@@ -292,12 +313,20 @@ class ObjectPoseDataset(data.Dataset):
         # np.random.seed(100)
 
         # <editor-fold desc="Data initialization">
+        if not self.opt.custom:
+            path_img, video_id, frame_id, path_json = self.images[index]
+        else:
+            path_img, _, _, path_json = self.images[index]
+            video_id = 0
+            frame_id = 0
 
-        path_img, video_id, frame_id, path_json = self.images[index]
         img_path = path_img
         with open(path_json) as f:
             anns = json.load(f)
-        num_objs = min(len(anns['objects']), self.max_objs)
+        if not self.opt.custom:
+            num_objs = min(len(anns['objects']), self.max_objs)
+        else:
+            num_objs = 1
 
         try:
             img = cv2.imread(img_path)
@@ -954,9 +983,11 @@ class ObjectPoseDataset(data.Dataset):
         # </editor-fold>
 
         # <editor-fold desc="Step2: Work on the current frame">
-        cam_projection_matrix = anns['camera_data']['camera_projection_matrix']
+        if not self.opt.custom :
+            cam_projection_matrix = anns['camera_data']['camera_projection_matrix']
         for k in range(num_objs):
-            ann = anns['objects'][k]
+            if not self.opt.custom : ann = anns['objects'][k]
+            else : ann = anns["labelingInfo"][k]["3DBox"]
 
             # Todo: Only for chair category for now
             if 'symmetric' in ann:
@@ -964,6 +995,7 @@ class ObjectPoseDataset(data.Dataset):
                     num_symmetry = 4
                 else:
                     num_symmetry = 1
+            if self.opt.custom : num_symmetry = 1
 
             if self.opt.c == 'cup':
                 if self.opt.tracking_task == True and \
@@ -973,7 +1005,11 @@ class ObjectPoseDataset(data.Dataset):
 
             # Todo: Fixed as 0 for now
             cls_id = 0
-            pts_ori = np.array(ann['projected_cuboid'])
+            if not self.opt.custom : pts_ori = np.array(ann['projected_cuboid'])
+            else : 
+                xy_dict = ann["location"][0]
+                label = [[int(xy_dict[f"x{i}"]), int(xy_dict[f"y{i}"])] for i in [9]+list(range(1, 9))]
+                pts_ori = np.array(label)
 
             # Only apply rotation on gt annotation when symmetry exists
             for id_symmetry in range(num_symmetry):
@@ -1060,15 +1096,16 @@ class ObjectPoseDataset(data.Dataset):
                             continue
 
                     # Todo: Currently, normalized by y axis (up)
-                    if self.opt.obj_scale:
-                        if self.opt.use_absolute_scale:
-                            scale[id_symmetry, k] = np.abs(ann['scale'])
-                        else:
-                            scale[id_symmetry, k] = np.abs(ann['scale']) / ann['scale'][1]
+                    if not self.opt.custom :
+                        if self.opt.obj_scale:
+                            if self.opt.use_absolute_scale:
+                                scale[id_symmetry, k] = np.abs(ann['scale'])
+                            else:
+                                scale[id_symmetry, k] = np.abs(ann['scale']) / ann['scale'][1]
 
-                        # Todo: Currently, use 0 as the std, not used yet
-                        if self.opt.obj_scale_uncertainty:
-                            scale_uncertainty[id_symmetry, k] = 0
+                            # Todo: Currently, use 0 as the std, not used yet
+                            if self.opt.obj_scale_uncertainty:
+                                scale_uncertainty[id_symmetry, k] = 0
 
                     wh[id_symmetry, k] = 1. * w, 1. * h
                     ind[id_symmetry, k] = ct_int[1] * output_res + ct_int[0]

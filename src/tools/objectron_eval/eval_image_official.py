@@ -10,9 +10,9 @@ have to modify the Evaluator.predict() function, which basically takes an image 
 a 3D bounding box.
 """
 
-import eigenpy
+# import eigenpy
 
-eigenpy.switchToNumpyArray()
+# eigenpy.switchToNumpyArray()
 
 import math
 import os
@@ -244,6 +244,7 @@ class Evaluator(object):
         """Evaluates a batch of serialized tf.Example protos."""
         images, labels, projs, cam_intrinsics, planes, views = [], [], [], [], [], []
         filenames = []
+        # 1
         for serialized in batch:
             example = tf.train.Example.FromString(serialized)
             image, label, filename = self.encoder.parse_example(example)
@@ -265,6 +266,7 @@ class Evaluator(object):
         # Since we use pnp here, not valid for now.
         local_id = 0
         results = []
+        # 2
         for image, label, cam_intrinsic, filename, projection_matrix, view in zip(images, labels, cam_intrinsics,
                                                                                   filenames, projs, views):
 
@@ -307,6 +309,7 @@ class Evaluator(object):
                 results.append(self.predict(image, cam_intrinsic, projection_matrix, filename, global_id))
 
         local_id = 0
+        # 3
         for boxes, label, plane, image, filename, cam_intrinsic, projection_matrix, view in zip(results, labels, planes,
                                                                                                 images, filenames,
                                                                                                 cam_intrinsics, projs,
@@ -383,7 +386,7 @@ class Evaluator(object):
 
             num_matched = 0
             for idx_box, box in enumerate(boxes):
-
+                print('idx_box : ', idx_box)
                 # Correspond to one prediction in one image
                 box_point_2d, box_point_3d, relative_scale, box_point_2d_ori, result_ori = box
 
@@ -829,9 +832,11 @@ class Evaluator(object):
                 m[i * 2 + 1, j * 3 + 2] = (cy + v) * control_alpha
 
         mt_m = m.transpose() @ m
-        es = eigenpy.SelfAdjointEigenSolver(mt_m)
-        V = es.eigenvectors()
-        D = es.eigenvalues()
+        # es = eigenpy.SelfAdjointEigenSolver(mt_m)
+        # V = es.eigenvectors()
+        # D = es.eigenvalues()
+
+        D, V = np.linalg.eig(mt_m) # to not use eigenpy
 
         CHECK_EQ(12, len(D))
 
@@ -1347,4 +1352,8 @@ if __name__ == '__main__':
     opt_detector.eval_data = f'/{opt_detector.c}/{opt_detector.c}_test*'
 
     opt_combined = argparse.Namespace(**vars(opt_eval), **vars(opt_detector))
+    with open('./default_eval_opt.txt', 'w') as f:
+        for k, v in sorted(vars(opt_combined).items()):
+            f.write(f'{k}: {v}\n')
+    exit(0)
     main(opt_combined)

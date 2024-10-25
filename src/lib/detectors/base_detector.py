@@ -302,7 +302,6 @@ class BaseDetector(object):
                                         pts[idx] = [p[0], p[1], 1]  # labeled but not visible
                                     else:
                                         pts[idx] = [p[0], p[1], 2]  # labeled and visible
-
                                 for j in range(8):
                                     pts[j, :2] = affine_transform(pts[j, :2], trans_input)
 

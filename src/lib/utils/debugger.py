@@ -27,9 +27,14 @@ class Debugger(object):
         self.names = ['op']
         self.num_class = 1
         self.num_joints = 8
-        self.edges = [[2, 4], [2, 6], [6, 8], [4, 8],
-                      [1, 2], [3, 4], [5, 6], [7, 8],
-                      [1, 3], [1, 5], [3, 7], [5, 7]]
+        # self.edges = [[2, 4], [2, 6], [6, 8], [4, 8],
+        #               [1, 2], [3, 4], [5, 6], [7, 8],
+        #               [1, 3], [1, 5], [3, 7], [5, 7]]
+        self.edges = [
+                [1, 2], [2, 3], [3, 4], [4, 1],  # 윗면
+                [5, 6], [6, 7], [7, 8], [8, 5],  # 아랫면
+                [1, 5], [2, 6], [3, 7], [4, 8]   # 수직 모서리
+            ]
 
         self.top_cross = [[3, 8], [4, 7]]
         self.front_cross = [[2, 8], [4, 6]]
@@ -45,9 +50,11 @@ class Debugger(object):
                           (0, 128, 0), (255, 0, 0), (130, 0, 75), (238, 130, 238),
                           (0, 0, 0), (255, 0, 0), (255, 0, 0), (255, 0, 0)]
 
-        # self.colors_hp = [(255, 0, 0), (255, 0, 0), (255, 0, 0),
-        #                   (255, 0, 0), (255, 0, 0), (255, 0, 0), (255, 0, 0),
-        #                   (255, 0, 0), (255, 0, 0), (255, 0, 0), (255, 0, 0)]
+        self.colors_hp = [(0, 0, 255), (0, 0, 255), (0, 0, 255),
+                          (0, 0, 255), (0, 0, 255), (0, 0, 255), (0, 0, 255),
+                          (0, 0, 255), (0, 0, 255), (0, 0, 255), (0, 0, 255),
+                          (0, 0, 255), (0, 0, 255), (0, 0, 255), (0, 0, 255),
+                          (0, 0, 255), (0, 0, 255), (0, 0, 255), (0, 0, 255)]
 
         num_classes = len(self.names)
         self.down_ratio = down_ratio
@@ -250,26 +257,26 @@ class Debugger(object):
         elif pred_flag == 'pnp':
             edge_color = (0, 0, 0)
 
-        # def findIntersection(x1, y1, x2, y2, x3, y3, x4, y4):
-        #     px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / (
-        #                 (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4))
-        #     py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / (
-        #                 (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4))
-        #
-        #     # Todo: for simplicity
-        #     if math.isnan(px) or math.isnan(py) or math.isinf(px) or math.isinf(py):
-        #         return 0,0
-        #     else:
-        #         return (int(px), int(py))
-        #
-        # # Draw center
-        # cv2.circle(self.imgs[img_id],
-        #            findIntersection(points[1, 0], points[1, 1], points[7, 0], points[7, 1], \
-        #                             points[3, 0], points[3, 1], points[5, 0], points[5, 1]), 5, edge_color, -1)
-        #
-        # cv2.circle(self.imgs[img_id],
-        #            findIntersection(points[2, 0], points[2, 1], points[7, 0], points[7, 1], \
-        #                             points[3, 0], points[3, 1], points[6, 0], points[6, 1]), 5, edge_color, -1)
+        def findIntersection(x1, y1, x2, y2, x3, y3, x4, y4):
+            px = ((x1 * y2 - y1 * x2) * (x3 - x4) - (x1 - x2) * (x3 * y4 - y3 * x4)) / (
+                        (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4))
+            py = ((x1 * y2 - y1 * x2) * (y3 - y4) - (y1 - y2) * (x3 * y4 - y3 * x4)) / (
+                        (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4))
+        
+            # Todo: for simplicity
+            if math.isnan(px) or math.isnan(py) or math.isinf(px) or math.isinf(py):
+                return 0,0
+            else:
+                return (int(px), int(py))
+        
+        # Draw center
+        cv2.circle(self.imgs[img_id],
+                   findIntersection(points[1, 0], points[1, 1], points[7, 0], points[7, 1], \
+                                    points[3, 0], points[3, 1], points[5, 0], points[5, 1]), 5, edge_color, -1)
+        
+        cv2.circle(self.imgs[img_id],
+                   findIntersection(points[2, 0], points[2, 1], points[7, 0], points[7, 1], \
+                                    points[3, 0], points[3, 1], points[6, 0], points[6, 1]), 5, edge_color, -1)
 
         if not PAPER_DISPLAY:
             # Draw cross

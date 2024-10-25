@@ -153,4 +153,8 @@ if __name__ == '__main__':
 
     # Update dataset info/training params
     opt = opts().init(opt)
+    with open('./default_demo_opt.txt', 'w') as f:
+        for k, v in sorted(vars(opt).items()):
+            f.write(f'{k}: {v}\n')
+    exit(0)
     demo(opt, meta)

@@ -19,12 +19,12 @@ if module_path not in sys.path:
 from objectron.schema import annotation_data_pb2 as annotation_protocol
 
 categories = [
-"bike",
+# "bike",
 # "book",
 # "bottle",
 # "camera",
 # "cereal_box",
-# "chair",
+"chair",
 # "cup",
 # "laptop",
 # "shoe"
@@ -75,7 +75,8 @@ def grab_frame(video_file, sequence,frame_ids):
             warning_flag=0
         else:
             warning_flag=1
-    except:
+    except Exception as e:
+        print(e)
         return None, 1
 
     return frames,warning_flag
@@ -88,6 +89,7 @@ def preprocess(annotation_file,category,opt):
             sequence = annotation_protocol.Sequence()
             sequence.ParseFromString(pb.read())
     except:
+        print("Error")
         with open('bug_list.txt', 'a+') as fp:
             video_filename = annotation_file.replace('pbdata','MOV')
             fp.write(video_filename)
@@ -112,10 +114,10 @@ def preprocess(annotation_file,category,opt):
     else:
         prefix=annotation_file[annotation_file.rfind('/')+1:annotation_file.rfind('.')]
         if os.path.isdir(f'{opt.outf}/{category}/{prefix}'):
-            print(f'folder {opt.outf}/{category}/{prefix} exists')
+            tqdm.tqdm.write(f'folder {opt.outf}/{category}/{prefix} exists')
         else:
             os.mkdir(f'{opt.outf}/{category}/{prefix}')
-            print(f'created folder {opt.outf}/{category}/{prefix}')
+            tqdm.tqdm.write(f'created folder {opt.outf}/{category}/{prefix}')
 
         for i,frame_id in enumerate(frame_id_list):
             # Debug only
@@ -209,8 +211,9 @@ if __name__ == "__main__":
 
     if opt.debug is True:
         
-        annotation_file = 'test/chair_batch-13_32.pbdata'
-    
+        annotation_file = f'data/{opt.c[0]}/chair_batch-13_32.pbdata'
+        print(annotation_file)
+
         if os.path.isdir(f'{opt.outf}/debug'):
             print(f'folder {opt.outf}/debug exists')
         else:
@@ -222,6 +225,7 @@ if __name__ == "__main__":
             if glob.glob(f"{opt.outf}/debug/{prefix}/*.json"):
                 print('Skip it')
             else:
+                print(f"processing {annotation_file}")
                 preprocess(annotation_file,'debug',opt)
         else:
             preprocess(annotation_file,'debug',opt)
@@ -252,16 +256,15 @@ if __name__ == "__main__":
 
 
             for target in tqdm.tqdm(target_list):
-                print(target)
+                tqdm.tqdm.write(target)
                 annotation_file = f"data/{c}/"+target.replace('/','_')+'.pbdata'
-                
                 
                 prefix = annotation_file[annotation_file.rfind('/')+1:annotation_file.rfind('.')] 
 
-                if opt.skip == True:
-                    # if glob.glob(f"{opt.outf}/{c}_{suffix}/{prefix}.png"):
-                    if glob.glob(f"{opt.outf}/{c}_{suffix}/{prefix}/*.json"):
-                        continue
+                # if opt.skip == True:
+                #     # if glob.glob(f"{opt.outf}/{c}_{suffix}/{prefix}.png"):
+                #     if glob.glob(f"{opt.outf}/{c}_{suffix}/{prefix}/*.json"):
+                #         continue
 
                                 
                 preprocess(annotation_file,f"{c}_{suffix}",opt)

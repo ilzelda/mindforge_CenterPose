@@ -28,10 +28,10 @@ def main(opt):
 
     Dataset = ObjectPoseDataset
 
+    opt.c = 'custom_box'
+    opt.data_dir = '/home/CenterPose/data/custom_box'
+    opt.tracking_task = False
     opt = opts().update_dataset_info_and_set_heads(opt, Dataset)
-    with open('default_training_opt.txt', 'w') as f:
-        for attr, value in sorted(vars(opt).items()):
-            f.write(f"{attr}: {value}\n")
 
     logger = Logger(opt)
 
@@ -42,9 +42,10 @@ def main(opt):
     model = create_model(opt.arch, opt.heads, opt.head_conv, opt=opt)
     optimizer = torch.optim.Adam(model.parameters(), opt.lr)
     start_epoch = 0
-    if opt.load_model != '':
-        model, optimizer, start_epoch = load_model(
-            model, opt.load_model, optimizer, opt.resume, opt.lr, opt.lr_step)
+
+    opt.load_model = 'exp/object_pose/objectron_custom_box_dlav1_34_2024-10-18-06-50/custom_box_best.pth'
+    model, optimizer, start_epoch = load_model(
+        model, opt.load_model, optimizer, opt.resume, opt.lr, opt.lr_step)
 
     Trainer = train_factory[opt.task]
     trainer = Trainer(opt, model, optimizer)
@@ -62,20 +63,33 @@ def main(opt):
         batch_size=1,
         shuffle=False,
         num_workers=0,
-        pin_memory=True,
+        pin_memory=False,
         collate_fn=collate_fn_filtered
     )
 
     if opt.test:
-        _, preds, _ = trainer.val(0, val_loader)
+        with torch.no_grad():
+            _, preds, log_imgs = trainer.val(0, val_loader)
+            logger.img_summary('test', log_imgs, 0)
+
+    # print("train datset test")
+    # example_train = Dataset(opt, 'train')
+    # # print(example_train[0])
+    # for i in range(len(example_train)):
+    #     try:
+    #         item = example_train[i]
+    #         if item is None:
+    #             print(f"Item {i} is None")
+    #     except Exception as e:
+    #         print(f"Error loading item {i}: {e}")
 
     train_loader = torch.utils.data.DataLoader(
         Dataset(opt, 'train'),
         batch_size=opt.batch_size,
         shuffle=True,
         num_workers=opt.num_workers,
-        pin_memory=True,
-        drop_last=True,
+        pin_memory=False,
+        drop_last=False,
         collate_fn=collate_fn_filtered
     )
 
@@ -125,7 +139,7 @@ if __name__ == '__main__':
     opt = opt.parser.parse_args()
 
     # Local configuration
-    opt.c = 'chair_processed'
+    opt.c = 'custom_box'
     opt.arch='dlav1_34'
     opt.obj_scale = True
     opt.obj_scale_weight = 1
@@ -181,13 +195,19 @@ if __name__ == '__main__':
         opt.chunk_sizes.append(slave_chunk_size)
     print('training chunk_sizes:', opt.chunk_sizes)
 
-    opt.root_dir = os.path.join(os.path.dirname(__file__), '..')
-    opt.data_dir = os.path.join(opt.root_dir, 'data')
-    opt.exp_dir = os.path.join(opt.root_dir, 'exp', opt.task)
+    opt.root_dir = os.path.join(os.path.dirname(__file__), '..') # CenterPose/
+    opt.data_dir = os.path.join(opt.root_dir, 'data') # CenterPose/data
+    opt.exp_dir = os.path.join(opt.root_dir, 'exp', opt.task) # CenterPose/exp/opt.task
 
     time_str = time.strftime('%Y-%m-%d-%H-%M')
     opt.save_dir = os.path.join(opt.exp_dir, f'{opt.exp_id}_{time_str}')
     opt.debug_dir = os.path.join(opt.save_dir, 'debug')
     print('The output will be saved to ', opt.save_dir)
+
+    # custom options
+    opt.custom = True
+    opt.num_workers = 0
+    opt.obj_scale_weight = 0
+    opt.test = True
 
     main(opt)

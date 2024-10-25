@@ -327,6 +327,9 @@ class opts(object):
         self.parser.add_argument('--eval_oracle_dep', action='store_true',
                                  help='use ground truth depth.')
 
+        # inference
+        # self.parser.add_argument('--', type=str, default='')
+
     def parse(self, opt):
         opt.gpus_str = opt.gpus
         opt.gpus = [int(gpu) for gpu in opt.gpus.split(',')]

@@ -91,3 +91,25 @@ def pnp_shell(opt, meta, bbox, points_filtered, scale, OPENCV_RETURN = False):
         return projected_points, point_3d_cam, np.array(bbox['obj_scale']), points_ori, bbox
 
     return
+
+def pnp_shell_alter(opt, meta, bbox, points_filtered, scale, OPENCV_RETURN = False):
+    projected_points = []
+    for i in range(len(points_filtered)):
+            check_point_2d = points_filtered[i]
+            # Ignore invalid points
+            if (check_point_2d is None or check_point_2d[0] < -5000 or check_point_2d[1] < -5000):
+                continue
+            projected_points.append(check_point_2d)
+        
+    points = [(x[0], x[1]) for x in np.array(bbox['kps']).reshape(-1, 2)]
+
+    # Add the center
+    points_ori = np.insert(points, 0, np.mean(points, axis=0), axis=0)
+
+    # Normalization
+    points_ori[:, 0] = points_ori[:, 0] / meta['width']
+    points_ori[:, 1] = points_ori[:, 1] / meta['height']
+
+    
+    # keypoint_2d_pnp, keypoint_3d, predicted_scale, keypoint_2d_ori, result_ori for debug
+    return projected_points, np.array(bbox['obj_scale']), points_ori, bbox

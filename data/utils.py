@@ -25,17 +25,17 @@ with open('label/cup/cup_list.txt','r') as fp:
         line_list=re.split(r'\t+', l.strip())
         cup_list.append(line_list)
 
-mug_left_list=[]
-with open('label/cup/mug_left_list.txt','r') as fp:
-    for l in fp:
-        line_list=re.split(r'\t+', l.strip())
-        mug_left_list.append(line_list)
+# mug_left_list=[]
+# with open('label/cup/mug_left_list.txt','r') as fp:
+#     for l in fp:
+#         line_list=re.split(r'\t+', l.strip())
+#         mug_left_list.append(line_list)
 
-mug_right_list=[]
-with open('label/cup/mug_right_list.txt','r') as fp:
-    for l in fp:
-        line_list=re.split(r'\t+', l.strip())
-        mug_right_list.append(line_list)
+# mug_right_list=[]
+# with open('label/cup/mug_right_list.txt','r') as fp:
+#     for l in fp:
+#         line_list=re.split(r'\t+', l.strip())
+#         mug_right_list.append(line_list)
 
 
 chair_symmetric_list=[]
