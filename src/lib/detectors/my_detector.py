@@ -69,7 +69,10 @@ class MyDetector(ObjectPoseDetector):
         # File input
         if isinstance(image_or_path_or_tensor, np.ndarray):
             # For eval or for CenterPose as data generator
-            image = image_or_path_or_tensor
+            if len(image_or_path_or_tensor.shape) < 4:
+                image = np.expand_dims(image_or_path_or_tensor, axis=0)
+            else:
+                image = image_or_path_or_tensor
 
             # print(f"image shape: {image.shape}")
             # print(f"pre_processed: {pre_processed}")
@@ -165,36 +168,37 @@ class MyDetector(ObjectPoseDetector):
             img = ((images * std_tensor + mean_tensor) * 255).clamp(0, 255).byte()
 
             # CPU로 이동 후 NumPy 배열로 변환
-            img = img.squeeze(0).cpu().numpy().transpose(1, 2, 0)
+            img = img.cpu().numpy().transpose(0, 2, 3, 1)
             # print(f'dets: {dets}')
 
             # return
             # print(f'output["hm"]: {output["hm"].shape}')
-            i=0
-            pred = debugger.gen_colormap(output['hm'][i].detach().cpu().numpy())
-            # gt = debugger.gen_colormap(batch['hm'][i][choice_list[i]].detach().cpu().numpy())
-            debugger.add_blend_img(img, pred, 'out_hm_pred')
-            # debugger.add_blend_img(img, gt, 'out_hm_gt')
+            # for i in range(self.opt.batch_size):
+            for i in range(img.shape[0]):
+                pred = debugger.gen_colormap(output['hm'][i].detach().cpu().numpy())
+                # gt = debugger.gen_colormap(batch['hm'][i][choice_list[i]].detach().cpu().numpy())
+                debugger.add_blend_img(img[i], pred, f'out_hm_pred_{i}')
+                # debugger.add_blend_img(img, gt, 'out_hm_gt')
 
-            # Predictions
-            debugger.add_img(img, img_id='out_img_pred')
-            # print(f"dets['scores'][i]: {len(dets['scores'][i])}")
-            for k in range(len(dets['scores'][i])):
-                # print(f"score: {dets['scores'][i][k][0]}/{self.opt.center_thresh}")
-                if dets['scores'][i][k][0] > self.opt.center_thresh:
-                    # if self.opt.reg_bbox:
-                    #     debugger.add_coco_bbox(dets['bboxes'][i][k], dets['clses'][i][k],
-                    #                            dets['scores'][i][k][0], img_id='out_img_pred')
-                    debugger.add_coco_hp(dets['kps'][i][k], img_id='out_img_pred')
+                # Predictions
+                debugger.add_img(img[i], img_id=f'out_img_pred_{i}')
+                # print(f"dets['scores'][i]: {len(dets['scores'][i])}")
+                for k in range(len(dets['scores'][i])):
+                    # print(f"score: {dets['scores'][i][k][0]}/{self.opt.center_thresh}")
+                    if dets['scores'][i][k][0] > self.opt.center_thresh:
+                        # if self.opt.reg_bbox:
+                        #     debugger.add_coco_bbox(dets['bboxes'][i][k], dets['clses'][i][k],
+                        #                            dets['scores'][i][k][0], img_id='out_img_pred')
+                        debugger.add_coco_hp(dets['kps'][i][k], img_id=f'out_img_pred_{i}')
 
-            # print(f'output["hm_hp"]: {output["hm_hp"].shape}') # [1 * 8 * 128 * 128]
-            pred = debugger.gen_colormap_hp(output['hm_hp'][i].detach().cpu().numpy())
-            debugger.add_blend_img(img, pred, 'out_hmhp_pred')
+                # print(f'output["hm_hp"]: {output["hm_hp"].shape}') # [1 * 8 * 128 * 128]
+                pred = debugger.gen_colormap_hp(output['hm_hp'][i].detach().cpu().numpy())
+                debugger.add_blend_img(img[i], pred, f'out_hmhp_pred_{i}')
 
-            pred = debugger.gen_colormap_hp(output['hps'][i].detach().cpu().numpy())
-            debugger.add_blend_img(img, pred, 'out_hp_pred')
+                pred = debugger.gen_colormap_hp(output['hps'][i].detach().cpu().numpy())
+                debugger.add_blend_img(img[i], pred, f'out_hp_pred_{i}')
 
-            pred = debugger.gen_colormap_hp(output['hp_offset'][i].detach().cpu().numpy())
-            debugger.add_blend_img(img, pred, 'out_hp_offset_pred')
+                pred = debugger.gen_colormap_hp(output['hp_offset'][i].detach().cpu().numpy())
+                debugger.add_blend_img(img[i], pred, f'out_hp_offset_pred_{i}')
     
         return debugger.imgs

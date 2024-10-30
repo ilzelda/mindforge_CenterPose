@@ -3,9 +3,10 @@ __pycache__/
 .vscode/
 exp/
 demo/
-./data/chair_processed/
-./data/data/
-./data/index/
+data/
 images/
 models/
 src/demo_output/
+src/command.txt
+src/inference_window.bat
+src/inference.sh

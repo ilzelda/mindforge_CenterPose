@@ -94,7 +94,8 @@ class BaseDetector(object):
                 Currently support: fix short size/ center crop to a fixed size/
                 keep original resolution but pad to a multiplication of 32
         '''
-        height, width = image.shape[0:2]
+        batch_size, height, width = image.shape[0:3]
+
         new_height = int(height * scale)
         new_width = int(width * scale)
 
@@ -125,13 +126,14 @@ class BaseDetector(object):
         out_width = inp_width // self.opt.down_ratio
         trans_output = get_affine_transform(c, s, 0, [out_width, out_height])
 
-        resized_image = cv2.resize(image, (new_width, new_height))
-        inp_image = cv2.warpAffine(
-            resized_image, trans_input, (inp_width, inp_height),
-            flags=cv2.INTER_LINEAR)
-        inp_image = ((inp_image / 255. - self.mean) / self.std).astype(np.float32)
-
-        images = inp_image.transpose(2, 0, 1).reshape(1, 3, inp_height, inp_width)
+        images = np.zeros((batch_size, 3, inp_height, inp_width), dtype=np.float32)
+        for i in range(batch_size):
+            resized_image = cv2.resize(image[i], (new_width, new_height))
+            inp_image = cv2.warpAffine(
+                resized_image, trans_input, (inp_width, inp_height),
+                flags=cv2.INTER_LINEAR)
+            inp_image = ((inp_image / 255. - self.mean) / self.std).astype(np.float32)
+            images[i] = inp_image.transpose(2, 0, 1)
 
         images = torch.from_numpy(images)
         meta = {'c': c, 's': s, 'height': height, 'width': width,

@@ -38,7 +38,9 @@ def set_device(required_memory):
     return torch.device("cpu")
 
 # 예시: 4GB의 메모리가 필요하다고 가정
-required_memory = 4 * 1024 * 1024 * 1024  # 4GB in bytes
+# required_memory = 4 * 1024 * 1024 * 1024  # 4GB in bytes
+required_memory = 0  # 4GB in bytes
+
 device = set_device(required_memory)
 
 image_ext = ['jpg', 'jpeg', 'png', 'webp']
@@ -50,85 +52,105 @@ def demo(opt, meta):
     os.environ['CUDA_VISIBLE_DEVICES'] = opt.gpus_str
     opt.debug = max(opt.debug, 1)
     # Detector = detector_factory[opt.task]
+    print("opt.arch: ", opt.arch)
     detector = MyDetector(opt)
-
+    print("model loaded")
     if opt.use_pnp == True and 'camera_matrix' not in meta.keys():
         raise RuntimeError('Error found. Please give the camera matrix when using pnp algorithm!')
 
     if opt.demo == 'webcam' or \
             opt.demo[opt.demo.rfind('.') + 1:].lower() in video_ext:
         
-        cam = cv2.VideoCapture(0 if opt.demo == 'webcam' else opt.demo)
-        fps = cam.get(cv2.CAP_PROP_FPS)
+        cam = cv2.VideoCapture(1 if opt.demo == 'webcam' else opt.demo)
+        cam.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         width = int(cam.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cam.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        total_frames = int(cam.get(cv2.CAP_PROP_FRAME_COUNT))  # Total number of frames
-        print(f"원본 비디오 크기: {width}x{height}, fps: {fps}, total_frames: {total_frames}")
-        
-        if not os.path.exists(opt.output_dir):
-            os.makedirs(opt.output_dir)
-
-        # VideoWriter 초기화
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        output_filename = opt.output_dir + opt.demo.split('/')[-1]
-        # output_video = cv2.VideoWriter(output_filename, fourcc, fps, (opt.input_w, opt.input_h))
-
-
-        # if not output_video.isOpened():
-        #     print(f"비디오 파일({output_filename})을 열 수 없습니다. 경로와 권한을 확인하세요.")
-        #     exit(1)
-
-        detector.pause = False
-
-        # Check if camera opened successfully
-        if (cam.isOpened() == False):
-            print("Error opening video stream or file")
-
-        idx = 0
-        with tqdm(total=total_frames) as pbar:
+        fps = cam.get(cv2.CAP_PROP_FPS)
+        print("start")
+        if opt.demo == 'webcam':
+            print(f"input 크기: {width}x{height}, fps: {fps}")
+            
+            frame_idx = 0
             while cam.isOpened():
-                ret, img = cam.read()
-                # try:
-                #     cv2.imshow('input', img)
-                # except:
-                #     exit(1)
+                ret, frame = cam.read()
                 if not ret:
                     break
+                image_dict = detector.run(frame, meta_inp=meta)
+                out_img = image_dict['out_img_pred']
+                
+                # 창 크기 조절
+                window_name = 'Webcam demo'
+                cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)  # 크기 조절 가능한 창 생성
+                cv2.imshow(window_name, out_img)
 
-                # filename = os.path.splitext(os.path.basename(opt.demo))[0] + '_' + str(idx).zfill(4) + '.png'
-                filename = f"frame_{idx:04d}.png"
-                image_dict = detector.run(img, meta_inp=meta, filename=filename)
+                # press 'q' to quit
+                if cv2.waitKey(1) & 0xFF == ord('q'):
+                    break
+                frame_idx += 1
+        else:
+            total_frames = int(cam.get(cv2.CAP_PROP_FRAME_COUNT))  # Total number of frames
+            print(f"원본 비디오 크기: {width}x{height}, fps: {fps}, total_frames: {total_frames}")
+            
+            if not os.path.exists(opt.output_dir):
+                os.makedirs(opt.output_dir)
+
+            detector.pause = False
+
+            # Check if camera opened successfully
+            if (cam.isOpened() == False):
+                print("Error opening video stream or file")
+
+            idx = 0
+            pbar = tqdm(total=total_frames)
+            while(cam.isOpened()):        
+                batch = []        
+                while(True):                
+                    ret, img = cam.read()
+                    if not ret : break
+                    
+                    batch.append(img)
+                    # if len(batch) == opt.batch_size:
+                    if len(batch) == 32:
+                        break
+                    
+                batch = np.array(batch)
+                image_dict = detector.run(batch, meta_inp=meta)
                 
                 if image_dict is not None:
-                    out_img = image_dict['out_img_pred']
+                    for i in range(batch.shape[0]):
+                        out_img = image_dict[f'out_img_pred_{i}']
+                        # print(out_img.shape)
+                        # 필요한 경우 크기 조정
+                        # if out_img.shape[:2] != (height, width):
+                        #     out_img = cv2.resize(out_img, (width, height))
+                        
+                        # uint8로 변환
+                        out_img = np.clip(out_img, 0, 255).astype(np.uint8)
                     
-                    # 필요한 경우 크기 조정
-                    # if out_img.shape[:2] != (height, width):
-                    #     out_img = cv2.resize(out_img, (width, height))
-                    
-                    # uint8로 변환
-                    out_img = np.clip(out_img, 0, 255).astype(np.uint8)
-                    
-                    # 비디오로 저장
-                    # success = output_video.write(out_img)
-                    # if not success:
-                    #     print(f"프레임 {idx} 저장 실패")
-                    
-                    # 이미지로 저장
-                    output_path = os.path.join(opt.output_dir, filename)
-                    cv2.imwrite(output_path, out_img)
-                    # print(f"프레임 {idx} 저장됨: {output_path}")
+                        # 비디오로 저장
+                        # success = output_video.write(out_img)
+                        # if not success:
+                        #     print(f"프레임 {idx} 저장 실패")
+                        
+                        # exit()
+
+                        # 이미지로 저장
+                        filename = f"frame_{idx*32+i:04d}.png"
+                        output_path = os.path.join(opt.output_dir, filename)
+                        cv2.imwrite(output_path, out_img)
+                        # print(f"프레임 {idx} 저장됨: {output_path}")
                 else:
                     print(f"image_dict is None for frame {idx}")
                 
                 idx += 1
-                pbar.update(1)
-
+                pbar.update(batch.shape[0])
+            print(f"처리 완료: {opt.output_dir}에 {idx}개의 프레임이 저장되었습니다.")
+        
         cam.release()
         # output_video.release()
         # print(f"비디오 출력 완료: {output_filename}")
         # print(f"총 {idx}개의 프레임이 처리되었습니다.")
-        print(f"처리 완료: {opt.output_dir}에 {idx}개의 프레임이 저장되었습니다.")
 
         # ffmpeg_cmd = f"ffmpeg -framerate {fps} -i {opt.output_dir}/frame_%04d.png -c:v libx264 -pix_fmt yuv420p {output_filename}"
         # subprocess.run(ffmpeg_cmd, shell=True, check=True)
