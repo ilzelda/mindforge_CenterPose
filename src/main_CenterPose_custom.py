@@ -142,7 +142,7 @@ if __name__ == '__main__':
 
     # Training param
     opt.exp_id = f'objectron_{opt.c}_{opt.arch}'
-    # opt.num_epochs = 140
+    opt.num_epochs = 200
     opt.val_intervals = 5
     opt.lr_step = '90,120'
     opt.batch_size = 16
@@ -204,7 +204,8 @@ if __name__ == '__main__':
     # custom options
     opt.custom = True
     opt.num_workers = 0
-    opt.obj_scale_weight = 0
+    # opt.obj_scale_weight = 0
+    
     if opt.c == 'custom_box':
         opt.data_dir = '/home/CenterPose/data/custom_box'
     main(opt)

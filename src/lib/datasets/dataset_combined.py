@@ -327,6 +327,7 @@ class ObjectPoseDataset(data.Dataset):
             num_objs = min(len(anns['objects']), self.max_objs)
         else:
             num_objs = 1
+            
 
         try:
             img = cv2.imread(img_path)
@@ -987,7 +988,32 @@ class ObjectPoseDataset(data.Dataset):
             cam_projection_matrix = anns['camera_data']['camera_projection_matrix']
         for k in range(num_objs):
             if not self.opt.custom : ann = anns['objects'][k]
-            else : ann = anns["labelingInfo"][k]["3DBox"]
+            else : 
+                ann = anns["labelingInfo"][k]["3DBox"]
+                if path_json.split('/')[-3] == 'box_monitor_1':
+                    ann['scale'] = [50, 7, 32]
+                elif path_json.split('/')[-3] == 'box_monitor_2':
+                    ann['scale'] = [7, 50, 32]
+                elif path_json.split('/')[-3] == 'box_barcode_1':
+                    ann['scale'] = [23, 12, 26]
+                elif path_json.split('/')[-3] == 'box_barcode_2':
+                    ann['scale'] = [23, 26, 12]
+                elif path_json.split('/')[-3] == 'box_blacktea_1':
+                    ann['scale'] = [18, 7, 22]
+                elif path_json.split('/')[-3] == 'box_blacktea_2':
+                    ann['scale'] = [7,22, 18]
+                elif path_json.split('/')[-3] == 'box_maxim_1':
+                    ann['scale'] = [28, 14, 17.5]
+                elif path_json.split('/')[-3] == 'box_maxim_2':
+                    ann['scale'] = [14, 17.5, 28]
+                elif path_json.split('/')[-3] == 'box_tea_1':
+                    ann['scale'] = [20.5, 8, 20]
+                elif path_json.split('/')[-3] == 'box_tea_2':
+                    ann['scale'] = [20, 20.5, 8]
+                elif path_json.split('/')[-3] == 'box_tissue_1':
+                    ann['scale'] = [11.5, 9.5, 23.5]
+                elif path_json.split('/')[-3] == 'box_tissue_2':
+                    ann['scale'] = [11.5, 23.5, 9.5]
 
             # Todo: Only for chair category for now
             if 'symmetric' in ann:
@@ -1096,16 +1122,15 @@ class ObjectPoseDataset(data.Dataset):
                             continue
 
                     # Todo: Currently, normalized by y axis (up)
-                    if not self.opt.custom :
-                        if self.opt.obj_scale:
-                            if self.opt.use_absolute_scale:
-                                scale[id_symmetry, k] = np.abs(ann['scale'])
-                            else:
-                                scale[id_symmetry, k] = np.abs(ann['scale']) / ann['scale'][1]
+                    if self.opt.obj_scale:
+                        if self.opt.use_absolute_scale:
+                            scale[id_symmetry, k] = np.abs(ann['scale'])
+                        else:
+                            scale[id_symmetry, k] = np.abs(ann['scale']) / ann['scale'][1]
 
-                            # Todo: Currently, use 0 as the std, not used yet
-                            if self.opt.obj_scale_uncertainty:
-                                scale_uncertainty[id_symmetry, k] = 0
+                        # Todo: Currently, use 0 as the std, not used yet
+                        if self.opt.obj_scale_uncertainty:
+                            scale_uncertainty[id_symmetry, k] = 0
 
                     wh[id_symmetry, k] = 1. * w, 1. * h
                     ind[id_symmetry, k] = ct_int[1] * output_res + ct_int[0]
