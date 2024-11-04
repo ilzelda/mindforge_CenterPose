@@ -84,6 +84,7 @@ class MyDetector(ObjectPoseDetector):
         elif type(image_or_path_or_tensor) == type(''):
             # For demo
             image = cv2.imread(image_or_path_or_tensor)
+            image = np.expand_dims(np.array(image), axis=0)
             # print(f"image shape: {image.shape}")
             # print(f"pre_processed: {pre_processed}")
         else:
@@ -201,4 +202,4 @@ class MyDetector(ObjectPoseDetector):
                 pred = debugger.gen_colormap_hp(output['hp_offset'][i].detach().cpu().numpy())
                 debugger.add_blend_img(img[i], pred, f'out_hp_offset_pred_{i}')
     
-        return debugger.imgs
+        return dets, debugger.imgs
