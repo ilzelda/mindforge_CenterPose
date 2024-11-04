@@ -76,7 +76,7 @@ def demo(opt, meta):
                 ret, frame = cam.read()
                 if not ret:
                     break
-                image_dict = detector.run(frame, meta_inp=meta)
+                _, image_dict = detector.run(frame, meta_inp=meta)
                 out_img = image_dict['out_img_pred']
                 
                 # 창 크기 조절
@@ -115,7 +115,7 @@ def demo(opt, meta):
                         break
                     
                 batch = np.array(batch)
-                image_dict = detector.run(batch, meta_inp=meta)
+                _, image_dict = detector.run(batch, meta_inp=meta)
                 
                 if image_dict is not None:
                     for i in range(batch.shape[0]):
@@ -187,7 +187,7 @@ def demo(opt, meta):
             print(f'Processing image {image_name}')
 
             # Todo: External GT input is not enabled in demo yet
-            img_dict = detector.run(image_name, meta_inp=meta)
+            _, img_dict = detector.run(image_name, meta_inp=meta)
             # print(f"img_dict: {img_dict.keys()}")
             # print(f"type: {type(img_dict['out_img_pred'])}")
             # print(f"shape: {img_dict['out_img_pred'].shape}")
