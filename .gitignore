@@ -10,3 +10,4 @@ src/demo_output/
 src/command.txt
 src/inference_window.bat
 src/inference.sh
+src/*.png

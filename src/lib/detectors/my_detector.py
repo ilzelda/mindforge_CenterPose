@@ -9,17 +9,29 @@ import math
 class MyDebugger(Debugger):
     def __init__(self, *args, **kwargs):
         super(MyDebugger, self).__init__(*args, **kwargs)
+        # self.edges = [
+        #     [1, 2], [2, 3], [3, 4], [4, 1],  # 윗면
+        #     [5, 6], [6, 7], [7, 8], [8, 5],  # 아랫면
+        #     [1, 5], [2, 6], [3, 7], [4, 8]   # 수직 모서리
+        # ]
+
+        # objectron 기준
+        self.edges = [[2, 4], [2, 6], [6, 8], [4, 8],
+                      [1, 2], [3, 4], [5, 6], [7, 8],
+                      [1, 3], [1, 5], [3, 7], [5, 7]]
+
 
     def add_coco_hp(self, points, img_id='default', pred_flag='pred', PAPER_DISPLAY=False):
         points = np.array(points, dtype=np.int32).reshape(self.num_joints, 2)
 
         # Draw corner points
         for j in range(self.num_joints):
-            cv2.circle(self.imgs[img_id],
-                        (points[j, 0], points[j, 1]), 2, self.colors_hp[j], -1)
-
+            # cv2.circle(self.imgs[img_id],
+            #             (points[j, 0], points[j, 1]), 2, self.colors_hp[j], -1)
+            cv2.putText(self.imgs[img_id], f"{j+1}", (points[j, 0], points[j, 1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
         # Draw edges
+        axis = [2, 1, 6]
         for j, e in enumerate(self.edges):
             
             temp = [e[0] - 1, e[1] - 1]
@@ -35,6 +47,14 @@ class MyDebugger(Debugger):
             elif pred_flag == 'extra':
                 edge_color = (0, 165, 255)
                 label = 'extra'
+
+            if j == axis[0]: # y
+                edge_color = (128, 0, 128) # 보라색
+            elif j == axis[1]: # x
+                edge_color = (0, 255, 0) # 초록색
+            elif j == axis[2]: # z
+                edge_color = (0, 128, 255) # 주황색
+
             if points[temp[1], 0] <= -10000 or points[temp[1], 1] <= -10000 or points[temp[0], 0] <= -10000 or \
                     points[temp[0], 1] <= -10000:
                 continue
@@ -74,8 +94,6 @@ class MyDetector(ObjectPoseDetector):
             else:
                 image = image_or_path_or_tensor
 
-            # print(f"image shape: {image.shape}")
-            # print(f"pre_processed: {pre_processed}")
             # We usually use image_or_path_or_tensor to represent filename
             if filename is not None:
                 image_or_path_or_tensor = filename
@@ -85,8 +103,6 @@ class MyDetector(ObjectPoseDetector):
             # For demo
             image = cv2.imread(image_or_path_or_tensor)
             image = np.expand_dims(np.array(image), axis=0)
-            # print(f"image shape: {image.shape}")
-            # print(f"pre_processed: {pre_processed}")
         else:
             # Not used yet
             try:
@@ -129,39 +145,14 @@ class MyDetector(ObjectPoseDetector):
             output, dets, forward_time = self.process(
                 images, self.pre_images, pre_hms, pre_hm_hp, pre_inds, return_time=True)
             
-            # print(f"output.keys(): {output.keys()}")
-            # print(f"output['hm_hp']: {output['hm_hp'].shape}")
-            # print(f"output['hps']: {output['hps'].shape}")
-            # print(f"output['hp_offset']: {output['hp_offset'].shape}")
-
-            # print(f"dets['kps_displacement_mean']: {dets['kps_displacement_mean'].shape}")
-            # print(f"dets['kps_displacement_std']: {dets['kps_displacement_std'].shape}")
-            # print("키포인트 변위 평균 분석:")
-            # for k in range(dets['kps_displacement_mean'].shape[1]):
-            #     mean_displacement = dets['kps_displacement_mean'][0, k]
-            #     std_displacement = dets['kps_displacement_std'][0, k]
-                
-            #     if np.any(mean_displacement != 0):  # 0이 아닌 값이 있는 경우에만 출력
-            #         print(f"  객체 {k}:")
-            #         for j in range(8):  # 8개의 키포인트에 대해 반복
-            #             print(f"    키포인트 {j+1}: 평균 = ({mean_displacement[j*2]:.2f}, {mean_displacement[j*2+1]:.2f}), "
-            #                   f"표준편차 = ({std_displacement[j*2]:.2f}, {std_displacement[j*2+1]:.2f})")
-            
-            dets['bboxes'] *= self.opt.input_res / self.opt.output_res
-            dets['kps'] *= self.opt.input_res / self.opt.output_res
+            dets['bboxes'] *= self.opt.input_res / self.opt.output_res # *= 512 / 128
+            dets['kps'] *= self.opt.input_res / self.opt.output_res # *= 512 / 128
             # for k in dets:
             #     dets[k] = dets[k].detach().cpu().numpy()
             
             # debugger = Debugger(
             #     dataset=self.opt.dataset, ipynb=(self.opt.debug == 3), theme=self.opt.debugger_theme)
             
-            # print(f'images shape: {images.shape}')
-            # print(f"self.opt.std: {self.opt.std}")
-            # print(f"self.opt.mean: {self.opt.mean}")
-            # img = images.detach().cpu().numpy().transpose(1, 2, 0)
-            # img = np.clip(((
-            #                        images * self.opt.std + self.opt.mean) * 255.), 0, 255).astype(np.uint8)
-            # PyTorch 텐서로 변환
             std_tensor = torch.tensor(self.opt.std, device=images.device).view(1, 3, 1, 1)
             mean_tensor = torch.tensor(self.opt.mean, device=images.device).view(1, 3, 1, 1)
 
@@ -172,9 +163,6 @@ class MyDetector(ObjectPoseDetector):
             img = img.cpu().numpy().transpose(0, 2, 3, 1)
             # print(f'dets: {dets}')
 
-            # return
-            # print(f'output["hm"]: {output["hm"].shape}')
-            # for i in range(self.opt.batch_size):
             for i in range(img.shape[0]):
                 pred = debugger.gen_colormap(output['hm'][i].detach().cpu().numpy())
                 # gt = debugger.gen_colormap(batch['hm'][i][choice_list[i]].detach().cpu().numpy())
@@ -187,9 +175,6 @@ class MyDetector(ObjectPoseDetector):
                 for k in range(len(dets['scores'][i])):
                     # print(f"score: {dets['scores'][i][k][0]}/{self.opt.center_thresh}")
                     if dets['scores'][i][k][0] > self.opt.center_thresh:
-                        # if self.opt.reg_bbox:
-                        #     debugger.add_coco_bbox(dets['bboxes'][i][k], dets['clses'][i][k],
-                        #                            dets['scores'][i][k][0], img_id='out_img_pred')
                         debugger.add_coco_hp(dets['kps'][i][k], img_id=f'out_img_pred_{i}')
 
                 # print(f'output["hm_hp"]: {output["hm_hp"].shape}') # [1 * 8 * 128 * 128]

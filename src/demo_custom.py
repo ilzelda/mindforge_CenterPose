@@ -8,41 +8,21 @@ from __future__ import print_function
 
 import os
 import cv2
+import threading
+import importlib
+import numpy as np
+from tqdm import tqdm
 
 from lib.opts import opts
 from lib.detectors.detector_factory import detector_factory
 from lib.detectors.my_detector import MyDetector
 
-import glob
-import numpy as np
-from tqdm import tqdm
-import torch
-import subprocess
+from aruco_marker import MarkerDetector
+from util_dim import calculate_object_dimensions
 
-def get_available_memory():
-    if torch.cuda.is_available():
-        return torch.cuda.get_device_properties(0).total_memory - torch.cuda.memory_reserved(0)
-    else:
-        return 0
-
-def set_device(required_memory):
-    if torch.cuda.is_available():
-        available_memory = get_available_memory()
-        if available_memory >= required_memory:
-            print(f"GPU 메모리 충분: {available_memory / 1e9:.2f} GB 사용 가능")
-            return torch.device("cuda")
-        else:
-            print(f"GPU 메모리 부족: {available_memory / 1e9:.2f} GB 사용 가능, {required_memory / 1e9:.2f} GB 필요")
-    
-    print("CPU를 사용합니다.")
-    return torch.device("cpu")
-
-# 예시: 4GB의 메모리가 필요하다고 가정
-# required_memory = 4 * 1024 * 1024 * 1024  # 4GB in bytes
-required_memory = 0  # 4GB in bytes
-
-device = set_device(required_memory)
-
+import lib.detectors.my_detector as my_detector_module
+import aruco_marker as aruco_marker_module
+import util_dim as util_dim_module
 image_ext = ['jpg', 'jpeg', 'png', 'webp']
 video_ext = ['mp4', 'mov', 'avi', 'mkv']
 time_stats = ['tot', 'load', 'pre', 'net', 'dec', 'post', 'merge', 'pnp', 'track']
@@ -51,34 +31,87 @@ time_stats = ['tot', 'load', 'pre', 'net', 'dec', 'post', 'merge', 'pnp', 'track
 def demo(opt, meta):
     os.environ['CUDA_VISIBLE_DEVICES'] = opt.gpus_str
     opt.debug = max(opt.debug, 1)
-    # Detector = detector_factory[opt.task]
-    print("opt.arch: ", opt.arch)
     detector = MyDetector(opt)
-    print("model loaded")
+    print("model loaded : ", "GPU" if opt.gpus[0] >= 0 else "CPU")
     if opt.use_pnp == True and 'camera_matrix' not in meta.keys():
         raise RuntimeError('Error found. Please give the camera matrix when using pnp algorithm!')
 
     if opt.demo == 'webcam' or \
             opt.demo[opt.demo.rfind('.') + 1:].lower() in video_ext:
-        
+        print("opening webcam...")
         cam = cv2.VideoCapture(1 if opt.demo == 'webcam' else opt.demo)
         cam.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         width = int(cam.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cam.get(cv2.CAP_PROP_FRAME_HEIGHT))
         fps = cam.get(cv2.CAP_PROP_FPS)
+        print(f"input 크기: {width}x{height}, fps: {fps}")
         print("start")
+        
         if opt.demo == 'webcam':
-            print(f"input 크기: {width}x{height}, fps: {fps}")
-            
+            marker_detector = MarkerDetector(debug=True)
+
             frame_idx = 0
             while cam.isOpened():
                 ret, frame = cam.read()
                 if not ret:
                     break
-                _, image_dict = detector.run(frame, meta_inp=meta)
-                out_img = image_dict['out_img_pred']
+                # 스레드 생성
+                detector_thread = threading.Thread(target=lambda: (
+                    setattr(threading.current_thread(), 'result', detector.run(frame, meta_inp=meta))
+                ))
+                marker_thread = threading.Thread(target=lambda: (
+                    setattr(threading.current_thread(), 'result', marker_detector.detect_marker(frame))
+                ))
+
+                # 스레드 시작
+                detector_thread.start()
+                marker_thread.start()
+
+                # 스레드 종료 대기
+                detector_thread.join()
+                marker_thread.join()
+
+                # 결과 가져오기
+                dets, image_dict = detector_thread.result
+                dets['kps'] = dets['kps'].reshape(100, -1)[0].reshape(8, 2)
+                dets['obj_scale'] = dets['obj_scale'].reshape(100, -1)[0]
+                out_img = image_dict['out_img_pred_0']
                 
+                marker_detected = all(x is not None for x in marker_thread.result)
+                box_detected = (np.array(dets['scores'])[0,:,0] > opt.center_thresh).any()
+                cv2.putText(out_img, f"marker detected:{marker_detected}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255) if marker_detected else (0, 0, 255), 1)
+                cv2.putText(out_img, f"box detected:{box_detected}", (200, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255) if marker_detected else (0, 0, 255), 1)
+
+                
+                if marker_detected and box_detected:
+                    print(f"obj_scale - X:{dets['obj_scale'][0]:.2f}, Y:{dets['obj_scale'][1]:.2f}, Z:{dets['obj_scale'][2]:.2f}", end='\n', flush=False)
+                    result = calculate_object_dimensions(marker_thread.result, dets)
+                    box_lengths = result['dimension']
+                    info = result['info']
+                    
+                    print(f"box pixel size - X : {info['box_size_pixel']['x']:.2f}, Y : {info['box_size_pixel']['y']:.2f}, Z : {info['box_size_pixel']['z']:.2f}", end='\n', flush=False)
+                    print(f"marker_top: {info['marker_top_length']:.2f}, marker_left: {info['marker_left_length']:.2f}", end='\n\033[F\033[F\033[F', flush=True)
+                    
+                    # ori = 3
+                    colors = [(0, 255, 0), (128, 0, 128), (0, 128, 255)]
+                    for i, (key, value) in enumerate(box_lengths.items()):
+                        # x_pos = int((dets['kps'][ori][0]) + float(dets['kps'][value[1]][0]) // 2)
+                        # y_pos = int((dets['kps'][ori][1]) + float(dets['kps'][value[1]][1]) // 2)
+                        text = f"{key}: {value[0]:.2f}cm"
+                        # 텍스트 크기 측정
+                        (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+                        # 텍스트 배경 그리기
+                        cv2.rectangle(out_img, (10, 50 + 20 * i), (10 + text_width, 65 + 20 * i), (255, 255, 255), -1)
+                        # 텍스트 그리기
+                        cv2.putText(out_img, text, (10, 60 + 20 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colors[i], 1)
+
+                    marker_edges = [[0,1], [0,2]]
+                    for edge in marker_edges:
+                        start_point = (int(info['marker_corners'][edge[0]][0]), int(info['marker_corners'][edge[0]][1]))
+                        end_point = (int(info['marker_corners'][edge[1]][0]), int(info['marker_corners'][edge[1]][1]))
+                        cv2.line(out_img, start_point, end_point, (0, 0, 255), 2)
+
                 # 창 크기 조절
                 window_name = 'Webcam demo'
                 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)  # 크기 조절 가능한 창 생성
@@ -87,6 +120,13 @@ def demo(opt, meta):
                 # press 'q' to quit
                 if cv2.waitKey(1) & 0xFF == ord('q'):
                     break
+                if cv2.waitKey(1) & 0xFF == ord('r'):
+                    importlib.reload(util_dim_module)
+                    importlib.reload(my_detector_module)
+                    detector = my_detector_module.MyDetector(opt)
+                    importlib.reload(aruco_marker_module)
+                    marker_detector = MarkerDetector(debug=True)
+                    print("reload")
                 frame_idx += 1
         else:
             total_frames = int(cam.get(cv2.CAP_PROP_FRAME_COUNT))  # Total number of frames
@@ -115,7 +155,7 @@ def demo(opt, meta):
                         break
                     
                 batch = np.array(batch)
-                _, image_dict = detector.run(batch, meta_inp=meta)
+                dets, image_dict = detector.run(batch, meta_inp=meta)
                 
                 if image_dict is not None:
                     for i in range(batch.shape[0]):
