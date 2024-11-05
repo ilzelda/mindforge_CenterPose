@@ -993,7 +993,7 @@ class ObjectPoseDataset(data.Dataset):
                 if path_json.split('/')[-3] == 'box_monitor_1':
                     ann['scale'] = [50, 7, 32]
                 elif path_json.split('/')[-3] == 'box_monitor_2':
-                    ann['scale'] = [7, 50, 32]
+                    ann['scale'] = [7, 32, 50]
                 elif path_json.split('/')[-3] == 'box_barcode_1':
                     ann['scale'] = [23, 12, 26]
                 elif path_json.split('/')[-3] == 'box_barcode_2':
@@ -1002,10 +1002,10 @@ class ObjectPoseDataset(data.Dataset):
                     ann['scale'] = [18, 7, 22]
                 elif path_json.split('/')[-3] == 'box_blacktea_2':
                     ann['scale'] = [7,22, 18]
-                elif path_json.split('/')[-3] == 'box_maxim_1':
-                    ann['scale'] = [28, 14, 17.5]
-                elif path_json.split('/')[-3] == 'box_maxim_2':
-                    ann['scale'] = [14, 17.5, 28]
+                # elif path_json.split('/')[-3] == 'box_maxim_1':
+                #     ann['scale'] = [28, 14, 17.5]
+                # elif path_json.split('/')[-3] == 'box_maxim_2':
+                #     ann['scale'] = [14, 17.5, 28]
                 elif path_json.split('/')[-3] == 'box_tea_1':
                     ann['scale'] = [20.5, 8, 20]
                 elif path_json.split('/')[-3] == 'box_tea_2':
@@ -1034,7 +1034,10 @@ class ObjectPoseDataset(data.Dataset):
             if not self.opt.custom : pts_ori = np.array(ann['projected_cuboid'])
             else : 
                 xy_dict = ann["location"][0]
-                label = [[int(xy_dict[f"x{i}"]), int(xy_dict[f"y{i}"])] for i in [9]+list(range(1, 9))]
+                # label = [[int(xy_dict[f"x{i}"]), int(xy_dict[f"y{i}"])] for i in [9]+list(range(1, 9))]
+                corner_order = [9,8,4,5,1,7,3,6,2]
+                label = [[int(xy_dict[f"x{i}"]), int(xy_dict[f"y{i}"])] for i in corner_order]  
+
                 pts_ori = np.array(label)
 
             # Only apply rotation on gt annotation when symmetry exists
