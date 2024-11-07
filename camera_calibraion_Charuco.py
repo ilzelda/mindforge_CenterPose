@@ -28,7 +28,7 @@ def camera_calibration():
     counter = 0
     
     # 웹캠 초기화
-    cap = cv2.VideoCapture(1)
+    cap = cv2.VideoCapture(0)
     print("camera open")
     # ArUco 검출기 생성
     # charuco_param = cv2.aruco.CharucoParameters()
@@ -47,7 +47,8 @@ def camera_calibration():
         # 마커 검출
         # charucoCorners, charucoIds, markerCorners, markerIds = detector.detectBoard(gray)
         marker_corners, marker_ids, _ = cv2.aruco.detectMarkers(gray, dictionary, parameters=detector_param)
-        cv2.aruco.drawDetectedMarkers(frame, marker_corners, marker_ids)
+        display = frame.copy()
+        cv2.aruco.drawDetectedMarkers(display, marker_corners, marker_ids)
 
         # 현재 시간을 기준으로 2초마다 한번씩 저장
         current_time = time.time()
@@ -64,12 +65,15 @@ def camera_calibration():
                 pass
             last_time = current_time
 
-        cv2.imshow('Frame', frame)
+        cv2.imshow('Frame', display)
         
         # 'q' 키를 누르면 종료
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-            
+        elif cv2.waitKey(1) & 0xFF == ord('s'):
+            cv2.imwrite("exp_charuco.png", frame)
+            print("exp_charuco.png saved")
+
         # 충분한 수의 프레임이 저장되면 캘리브레이션 수행
         if counter >= 20:
             print("캘리브레이션 수행 중...")

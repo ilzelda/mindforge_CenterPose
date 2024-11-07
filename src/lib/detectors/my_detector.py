@@ -145,7 +145,6 @@ class MyDetector(ObjectPoseDetector):
             output, dets, forward_time = self.process(
                 images, self.pre_images, pre_hms, pre_hm_hp, pre_inds, return_time=True)
             
-            dets['bboxes'] *= self.opt.input_res / self.opt.output_res # *= 512 / 128
             dets['kps'] *= self.opt.input_res / self.opt.output_res # *= 512 / 128
             # for k in dets:
             #     dets[k] = dets[k].detach().cpu().numpy()

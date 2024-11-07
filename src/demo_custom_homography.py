@@ -17,8 +17,8 @@ from lib.opts import opts
 from lib.detectors.detector_factory import detector_factory
 from lib.detectors.my_detector import MyDetector
 
-from aruco_marker import MarkerDetector
-from util_dim import calculate_object_dimensions
+from aruco_marker import CharucoDetector
+from util_dim import resize_into_original_image, calc_box_size_pixel
 
 import lib.detectors.my_detector as my_detector_module
 import aruco_marker as aruco_marker_module
@@ -38,8 +38,10 @@ def demo(opt, meta):
 
     if opt.demo == 'webcam' or \
             opt.demo[opt.demo.rfind('.') + 1:].lower() in video_ext:
+        
         print("opening webcam...")
         cam = cv2.VideoCapture(1 if opt.demo == 'webcam' else opt.demo)
+        
         cam.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
         cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         width = int(cam.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -49,7 +51,7 @@ def demo(opt, meta):
         print("start")
         
         if opt.demo == 'webcam':
-            marker_detector = MarkerDetector(debug=True)
+            marker_detector = CharucoDetector(debug=True)
 
             frame_idx = 0
             while cam.isOpened():
@@ -61,7 +63,8 @@ def demo(opt, meta):
                     setattr(threading.current_thread(), 'result', detector.run(frame, meta_inp=meta))
                 ))
                 marker_thread = threading.Thread(target=lambda: (
-                    setattr(threading.current_thread(), 'result', marker_detector.detect_marker(frame))
+                    # setattr(threading.current_thread(), 'result', marker_detector.detect_charuco(frame))
+                    setattr(threading.current_thread(), 'result', marker_detector.detect_aruco(frame))
                 ))
 
                 # 스레드 시작
@@ -75,30 +78,54 @@ def demo(opt, meta):
                 # 결과 가져오기
                 dets, image_dict = detector_thread.result
                 dets['kps'] = dets['kps'].reshape(100, -1)[0].reshape(8, 2)
+                dets['kps'] = resize_into_original_image(dets['kps'])
+                # for i in range(len(dets['kps'])):
+                #     cv2.circle(frame, (int(dets['kps'][i][0]), int(dets['kps'][i][1])), 1, (0, 0, 255), 2)
+                # cv2.imshow("original_image", frame)
+
                 dets['obj_scale'] = dets['obj_scale'].reshape(100, -1)[0]
                 out_img = image_dict['out_img_pred_0']
                 
-                marker_detected = all(x is not None for x in marker_thread.result)
+                marker_detected = marker_thread.result is not None
                 box_detected = (np.array(dets['scores'])[0,:,0] > opt.center_thresh).any()
                 cv2.putText(out_img, f"marker detected:{marker_detected}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255) if marker_detected else (0, 0, 255), 1)
-                cv2.putText(out_img, f"box detected:{box_detected}", (200, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255) if marker_detected else (0, 0, 255), 1)
+                cv2.putText(out_img , f"box detected:{box_detected}", (200, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255) if box_detected else (0, 0, 255), 1)
 
+                if marker_detected :
+                    transform_matrix = marker_detector.find_homography(marker_thread.result, marker_detector.dst_points_aruco)
                 
-                if marker_detected and box_detected:
-                    print(f"obj_scale - X:{dets['obj_scale'][0]:.2f}, Y:{dets['obj_scale'][1]:.2f}, Z:{dets['obj_scale'][2]:.2f}", end='\n', flush=False)
-                    result = calculate_object_dimensions(marker_thread.result, dets)
-                    box_lengths = result['dimension']
-                    info = result['info']
+                if box_detected and transform_matrix is not None:
+                    kps_reshaped = dets['kps'].reshape(-1, 1, 2)
+                    kps_BEV = cv2.perspectiveTransform(kps_reshaped, transform_matrix)
+                    kps_BEV = kps_BEV.reshape(-1, 2)
                     
-                    print(f"box pixel size - X : {info['box_size_pixel']['x']:.2f}, Y : {info['box_size_pixel']['y']:.2f}, Z : {info['box_size_pixel']['z']:.2f}", end='\n', flush=False)
-                    print(f"marker_top: {info['marker_top_length']:.2f}, marker_left: {info['marker_left_length']:.2f}", end='\n\033[F\033[F\033[F', flush=True)
+                    warped_frame = cv2.warpPerspective(frame.copy(), transform_matrix, (frame.shape[1], frame.shape[0]))
+                    for i in range(len(marker_detector.dst_points_aruco)):
+                        cv2.circle(warped_frame, (int(marker_detector.dst_points_aruco[i][0]), int(marker_detector.dst_points_aruco[i][1])), 1, (0, 0, 255), 2)
+                    for i in range(len(kps_BEV)):
+                        cv2.circle(warped_frame, (int(kps_BEV[i][0]), int(kps_BEV[i][1])), 1, (0, 255, 255), 2)
+                    cv2.imshow("warped_frame", warped_frame)
+
+                    box_size_pixel = calc_box_size_pixel(dets['kps'])
+                    warped_box_size_pixel = calc_box_size_pixel(kps_BEV)
+                    x_length = warped_box_size_pixel['x'] / marker_detector.PIXEL_SIZE * 5
+                    z_length = warped_box_size_pixel['z'] / marker_detector.PIXEL_SIZE * 5
+                    y_length = x_length / dets['obj_scale'][0]
+
+                    print(f"obj_scale      - X: {dets['obj_scale'][0]:05.2f},   Y: {dets['obj_scale'][1]:05.2f},   Z: {dets['obj_scale'][2]:05.2f}",
+                            end='\n', flush=False)
+                    print(f"box pixel size - X: {box_size_pixel['x']:05.2f}px, Y: {box_size_pixel['y']:05.2f}px, Z: {box_size_pixel['z']:05.2f}px",
+                            end='\n', flush=False) 
+                    print(f"warped size    - X: {warped_box_size_pixel['x']:05.2f}px, Y: {warped_box_size_pixel['y']:05.2f}px, Z: {warped_box_size_pixel['z']:05.2f}px",
+                            end='\n\033[F\033[F\033[F', flush=True)
                     
+                    # 계산된 dimension 표시
                     # ori = 3
                     colors = [(0, 255, 0), (128, 0, 128), (0, 128, 255)]
-                    for i, (key, value) in enumerate(box_lengths.items()):
+                    for i, (key, value) in enumerate([('X', x_length), ('Y', y_length), ('Z', z_length)]):
                         # x_pos = int((dets['kps'][ori][0]) + float(dets['kps'][value[1]][0]) // 2)
                         # y_pos = int((dets['kps'][ori][1]) + float(dets['kps'][value[1]][1]) // 2)
-                        text = f"{key}: {value[0]:.2f}cm"
+                        text = f"{key}: {value:.2f}cm"
                         # 텍스트 크기 측정
                         (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
                         # 텍스트 배경 그리기
@@ -106,14 +133,14 @@ def demo(opt, meta):
                         # 텍스트 그리기
                         cv2.putText(out_img, text, (10, 60 + 20 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colors[i], 1)
 
-                    marker_edges = [[0,1], [0,2]]
-                    for edge in marker_edges:
-                        start_point = (int(info['marker_corners'][edge[0]][0]), int(info['marker_corners'][edge[0]][1]))
-                        end_point = (int(info['marker_corners'][edge[1]][0]), int(info['marker_corners'][edge[1]][1]))
-                        cv2.line(out_img, start_point, end_point, (0, 0, 255), 2)
+                    # marker_edges = [[0,1], [0,2]]
+                    # for i,edge in enumerate(marker_edges):
+                    #     start_point = (int(info['marker_corners'][edge[0]][0]), int(info['marker_corners'][edge[0]][1]))
+                    #     end_point = (int(info['marker_corners'][edge[1]][0]), int(info['marker_corners'][edge[1]][1]))
+                    #     cv2.line(out_img, start_point, end_point, (0, 255, 0) if i == 0 else (0, 128, 255), 2)
 
                 # 창 크기 조절
-                window_name = 'Webcam demo'
+                window_name = 'out_img'
                 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)  # 크기 조절 가능한 창 생성
                 cv2.imshow(window_name, out_img)
 
@@ -125,7 +152,7 @@ def demo(opt, meta):
                     importlib.reload(my_detector_module)
                     detector = my_detector_module.MyDetector(opt)
                     importlib.reload(aruco_marker_module)
-                    marker_detector = MarkerDetector(debug=True)
+                    marker_detector = CharucoDetector(debug=True)
                     print("reload")
                 frame_idx += 1
         else:
