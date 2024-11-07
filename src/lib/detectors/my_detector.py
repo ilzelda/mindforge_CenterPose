@@ -1,5 +1,7 @@
 from .object_pose import ObjectPoseDetector
 from lib.utils.debugger import Debugger
+from lib.utils.pnp.cuboid_pnp_shell import pnp_shell
+
 import time
 import numpy as np
 import torch
@@ -144,14 +146,79 @@ class MyDetector(ObjectPoseDetector):
             # dets: output tensors after extracting peaks
             output, dets, forward_time = self.process(
                 images, self.pre_images, pre_hms, pre_hm_hp, pre_inds, return_time=True)
-            
+
+            # back to the input image coordinate system
+            dets = self.post_process(dets, meta, scale)
+            detections.append(dets)
+        if self.opt.use_pnp:
+            boxes = []
+            results = self.merge_outputs(detections)
+            for bbox in results:
+                # Point processing according to different rep_modes
+                if self.opt.rep_mode == 0 or self.opt.rep_mode == 3 or self.opt.rep_mode == 4:
+
+                    # 8 representation from centernet
+                    points = [(x[0], x[1]) for x in np.array(bbox['kps']).reshape(-1, 2)]
+                    points_filtered = points
+
+                elif self.opt.rep_mode == 1:
+
+                    # 16 representation
+                    points_1 = np.array(bbox['kps_displacement_mean']).reshape(-1, 2)
+                    points_1 = [(x[0], x[1]) for x in points_1]
+                    points_2 = np.array(bbox['kps_heatmap_mean']).reshape(-1, 2)
+                    points_2 = [(x[0], x[1]) for x in points_2]
+                    points = np.hstack((points_1, points_2)).reshape(-1, 2)
+                    points_filtered = points
+                
+                ret = pnp_shell(self.opt, meta, bbox, points_filtered, bbox['obj_scale'], OPENCV_RETURN=self.opt.show_axes)
+                if ret is not None:
+                    boxes.append(ret)
+
+            dict_out = {"camera_data": [], "objects": []}
+            for box in boxes:
+                # Basic part
+                dict_obj = {
+                    'class': self.opt.c,
+                    'ct': box[4]['ct'],
+                    'bbox': np.array(box[4]['bbox']).tolist(),
+                    'confidence': box[4]['score'],
+                    'kps_displacement_mean': box[4]['kps_displacement_mean'].tolist(),
+                    'kps_heatmap_mean': box[4]['kps_heatmap_mean'].tolist(),
+
+                    'kps_heatmap_std': box[4]['kps_heatmap_std'].tolist(),
+                    'kps_heatmap_height': box[4]['kps_heatmap_height'].tolist(),
+                    'obj_scale': box[4]['obj_scale'].tolist(),
+                }
+
+                # Optional part
+                if 'location' in box[4]:
+                    dict_obj['location'] = box[4]['location']
+                    dict_obj['quaternion_xyzw'] = box[4]['quaternion_xyzw'].tolist()
+                if 'kps_pnp' in box[4]:
+                    dict_obj['kps_pnp'] = box[4]['kps_pnp'].tolist()
+                    dict_obj['kps'] = box[4]['kps_pnp'].tolist()
+
+                    dict_obj['kps_3d_cam'] = box[4]['kps_3d_cam'].tolist()
+
+                dict_out['objects'].append(dict_obj)
+
+            debugger.add_img(image[0], img_id='out_img_pred')
+            for bbox in results:
+                if bbox['score'] > self.opt.vis_thresh:
+                    # if self.opt.reg_bbox:
+                    #     debugger.add_coco_bbox(bbox['bbox'], 0, bbox['score'], img_id='out_img_pred')
+
+                    if 'projected_cuboid' in bbox:
+                        debugger.add_coco_hp(bbox['projected_cuboid'], img_id='out_img_pred', pred_flag='pnp')
+
+            return dets, debugger.imgs
+
+        else : 
+            dets = detections[0]
+
             dets['kps'] *= self.opt.input_res / self.opt.output_res # *= 512 / 128
-            # for k in dets:
-            #     dets[k] = dets[k].detach().cpu().numpy()
-            
-            # debugger = Debugger(
-            #     dataset=self.opt.dataset, ipynb=(self.opt.debug == 3), theme=self.opt.debugger_theme)
-            
+
             std_tensor = torch.tensor(self.opt.std, device=images.device).view(1, 3, 1, 1)
             mean_tensor = torch.tensor(self.opt.mean, device=images.device).view(1, 3, 1, 1)
 
@@ -169,12 +236,12 @@ class MyDetector(ObjectPoseDetector):
                 # debugger.add_blend_img(img, gt, 'out_hm_gt')
 
                 # Predictions
-                debugger.add_img(img[i], img_id=f'out_img_pred_{i}')
                 # print(f"dets['scores'][i]: {len(dets['scores'][i])}")
-                for k in range(len(dets['scores'][i])):
-                    # print(f"score: {dets['scores'][i][k][0]}/{self.opt.center_thresh}")
-                    if dets['scores'][i][k][0] > self.opt.center_thresh:
-                        debugger.add_coco_hp(dets['kps'][i][k], img_id=f'out_img_pred_{i}')
+                # print(f"score: {dets['score'][0]}/{self.opt.center_thresh}")
+                debugger.add_img(img[i], img_id=f'out_img_pred_{i}')
+                for j in range(len(dets['scores'][i])): 
+                    if dets['scores'][i][j][0] > self.opt.center_thresh:
+                        debugger.add_coco_hp(dets['kps'][i][j], img_id=f'out_img_pred_{i}')
 
                 # print(f'output["hm_hp"]: {output["hm_hp"].shape}') # [1 * 8 * 128 * 128]
                 pred = debugger.gen_colormap_hp(output['hm_hp'][i].detach().cpu().numpy())
@@ -185,5 +252,5 @@ class MyDetector(ObjectPoseDetector):
 
                 pred = debugger.gen_colormap_hp(output['hp_offset'][i].detach().cpu().numpy())
                 debugger.add_blend_img(img[i], pred, f'out_hp_offset_pred_{i}')
-    
-        return dets, debugger.imgs
+        
+            return dets, debugger.imgs

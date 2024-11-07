@@ -350,5 +350,6 @@ if __name__ == '__main__':
     
     opt.c = 'custom_box'
     opt.arch = 'dlav1_34'
+    opt.use_pnp = False
 
     demo(opt, meta)
