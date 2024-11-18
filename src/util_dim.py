@@ -15,10 +15,13 @@ def resize_into_padded_image(kps):
     return points
 
 def resize_into_original_image(kps):
+    '''
+        input 이미지(cam_width, cam_height) 좌표계에 맞춰 좌표 변환
+    '''
     # kps : [8 ,2]
     cam_width = 640
     cam_height = 480
-
+    
     kps[:, 0] *= cam_width / 512
     kps[:, 1] -= (512 - (512 * (cam_height / cam_width))) / 2 # padding 크기만큼 위로 올림
     kps[:, 1] *= 480 / (512 * (cam_height / cam_width)) # 원본 세로 크기에 맞게 조정
@@ -36,7 +39,7 @@ def calc_box_size_pixel(points):
 
         if points[temp[1], 0] <= -10000 or points[temp[1], 1] <= -10000 or points[temp[0], 0] <= -10000 or \
                 points[temp[0], 1] <= -10000:
-            pixel_length = None
+            pixel_length = -1
         else:
             start_point = (int(points[temp[0], 0]), int(points[temp[0], 1]))
             end_point = (int(points[temp[1], 0]), int(points[temp[1], 1]))

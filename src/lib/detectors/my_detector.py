@@ -22,15 +22,30 @@ class MyDebugger(Debugger):
                       [1, 2], [3, 4], [5, 6], [7, 8],
                       [1, 3], [1, 5], [3, 7], [5, 7]]
 
+        self.accumulated_kps = [] # N , 16
+    
+    def check_different_pose(self, kps):
+        prev_kps = self.accumulated_kps.reshape(-1,8,2)
+        kps_repeated = np.tile(kps, (prev_kps.shape[0], 1, 1))
+        diff = prev_kps - kps_repeated
+
+        if diff.mean() > 10:
+            self.accumulated_kps = np.concatenate([self.accumulated_kps, kps], axis=0)
+        else:
+            self.accumulated_kps = np.array(kps)
 
     def add_coco_hp(self, points, img_id='default', pred_flag='pred', PAPER_DISPLAY=False):
+        self.check_different_pose(points)
+        points = self.accumulated_kps.mean(axis=0)
         points = np.array(points, dtype=np.int32).reshape(self.num_joints, 2)
+        
 
         # Draw corner points
         for j in range(self.num_joints):
-            # cv2.circle(self.imgs[img_id],
-            #             (points[j, 0], points[j, 1]), 2, self.colors_hp[j], -1)
-            cv2.putText(self.imgs[img_id], f"{j+1}", (points[j, 0], points[j, 1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            cv2.circle(self.imgs[img_id],
+                        (points[j, 0], points[j, 1]), 5, self.colors_hp[j], -1)
+            # cv2.putText(self.imgs[img_id], f"{j+1}", 
+            #             (points[j, 0], points[j, 1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
 
         # Draw edges
         axis = [2, 1, 6]
@@ -77,6 +92,7 @@ class MyDebugger(Debugger):
 class MyDetector(ObjectPoseDetector):
     def __init__(self, opt):
         super(MyDetector, self).__init__(opt)
+
 
     def run(self, image_or_path_or_tensor, filename=None, meta_inp={}, preprocessed_flag=False):
         load_time, pre_time, net_time, dec_time, post_time = 0, 0, 0, 0, 0
@@ -148,7 +164,7 @@ class MyDetector(ObjectPoseDetector):
                 images, self.pre_images, pre_hms, pre_hm_hp, pre_inds, return_time=True)
 
             # back to the input image coordinate system
-            dets = self.post_process(dets, meta, scale)
+            # dets = self.post_process(dets, meta, scale)
             detections.append(dets)
         if self.opt.use_pnp:
             boxes = []
@@ -242,7 +258,7 @@ class MyDetector(ObjectPoseDetector):
                 for j in range(len(dets['scores'][i])): 
                     if dets['scores'][i][j][0] > self.opt.center_thresh:
                         debugger.add_coco_hp(dets['kps'][i][j], img_id=f'out_img_pred_{i}')
-
+                        
                 # print(f'output["hm_hp"]: {output["hm_hp"].shape}') # [1 * 8 * 128 * 128]
                 pred = debugger.gen_colormap_hp(output['hm_hp'][i].detach().cpu().numpy())
                 debugger.add_blend_img(img[i], pred, f'out_hmhp_pred_{i}')

@@ -50,38 +50,61 @@ class MarkerDetector:
 class CharucoDetector:
     def __init__(self, debug=False):
         self.debug = debug
-        self.ARUCO_DICT = cv2.aruco.DICT_6X6_250
+        self.ARUCO_DICT = cv2.aruco.DICT_4X4_100
         self.SQUARES_VERTICALLY = 7
         self.SQUARES_HORIZONTALLY = 5
-        self.SQUARE_LENGTH = 0.02
-        self.MARKER_LENGTH = 0.01
-        self.LENGTH_PX = 640   # total length of the page in pixels
-        self.MARGIN_PX = 20    # size of the margin in pixels
+        self.SQUARE_LENGTH = 60 
+        self.MARKER_LENGTH = 45
 
         self.dictionary = cv2.aruco.getPredefinedDictionary(self.ARUCO_DICT)
-        self.board = cv2.aruco.CharucoBoard((self.SQUARES_VERTICALLY, self.SQUARES_HORIZONTALLY), self.SQUARE_LENGTH, self.MARKER_LENGTH, self.dictionary)
+        self.board = cv2.aruco.CharucoBoard((self.SQUARES_HORIZONTALLY, self.SQUARES_VERTICALLY), self.SQUARE_LENGTH, self.MARKER_LENGTH, self.dictionary)
         
         self.detector_param = cv2.aruco.DetectorParameters()
 
-        self.PIXEL_SIZE = 100  # 각 정사각형의 픽셀 크기
         
-        w_offset = 340
-        h_offset = 240
-        self.dst_points = []
-        for y in range(self.board.getChessboardSize()[1]-1):
-            for x in range(self.board.getChessboardSize()[0]-1):
-                self.dst_points.append([
-                        w_offset + self.PIXEL_SIZE + self.PIXEL_SIZE*x,
-                        h_offset + self.PIXEL_SIZE + self.PIXEL_SIZE*y
-                    ])
-        self.dst_points = np.array(self.dst_points, dtype=np.float32)
+        # w_offset = 1920 // 2
+        # h_offset = 1080 // 2
+        # self.dst_points = []
+        # for y in range(self.board.getChessboardSize()[1]-1):
+        #     for x in range(self.board.getChessboardSize()[0]-1):
+        #         self.dst_points.append([
+        #                 w_offset + self.PIXEL_SIZE + self.PIXEL_SIZE*x,
+        #                 h_offset + self.PIXEL_SIZE + self.PIXEL_SIZE*y
+        #             ])
+        # self.dst_points = np.array(self.dst_points, dtype=np.float32)
 
-        self.dst_points_aruco = []
-        for i in range(2):
-            for j in range(2):
-                self.dst_points_aruco.append([w_offset + self.PIXEL_SIZE*i, h_offset + self.PIXEL_SIZE*j])
-        self.dst_points_aruco = np.array(self.dst_points_aruco, dtype=np.float32)
+        self.frame_width = 2048 
+        self.frame_height = 3058
         
+        # 마커들의 코너 좌표 생성
+        self.dst_points_aruco = np.zeros((77, 4, 2), dtype=np.float32)
+        
+        for n in range(4):
+            id_offset = n * 20
+            count = 0
+            id = 0
+            x_offset = (n % 2)* (self.SQUARE_LENGTH * self.SQUARES_HORIZONTALLY)
+            y_offset = (n // 2)* (self.SQUARE_LENGTH * self.SQUARES_VERTICALLY)
+            for i in range(self.SQUARES_VERTICALLY):
+
+                for j in range(self.SQUARES_HORIZONTALLY):
+                    count += 1
+                    if count % 2 == 1: continue
+
+                    idx = id + id_offset
+                    id += 1
+                    x = x_offset + j * self.SQUARE_LENGTH
+                    y = y_offset + i * self.SQUARE_LENGTH
+                    
+                    # 각 마커의 4개 코너점 설정
+                    top_left = [x+(self.SQUARE_LENGTH - self.MARKER_LENGTH)//2, y+(self.SQUARE_LENGTH - self.MARKER_LENGTH)//2]
+                    self.dst_points_aruco[idx] = np.array([
+                        top_left,
+                        [top_left[0] + self.MARKER_LENGTH, top_left[1]], # 우상단
+                        [top_left[0] + self.MARKER_LENGTH, top_left[1] + self.MARKER_LENGTH], # 우하단
+                        [top_left[0], top_left[1] + self.MARKER_LENGTH] # 좌하단
+                    ])
+
     def detect_charuco(self, frame):
         '''
         return:
@@ -89,32 +112,61 @@ class CharucoDetector:
         '''
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         marker_corners, marker_ids, _ = cv2.aruco.detectMarkers(gray, self.dictionary, parameters=self.detector_param)
-        if self.debug:
-            print("검출된 마커 수:", len(marker_ids) if marker_ids is not None else 0)
         
         if marker_ids is not None:
-            charuco_retval, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(marker_corners, marker_ids, gray, self.board)
+            charuco_retval, charuco_corners, charuco_ids = cv2.aruco.interpolateCornersCharuco(
+                marker_corners, marker_ids, gray, self.board)
+            
             if self.debug:
-                print("검출된 ChArUco 코너 수:", len(charuco_ids) if charuco_ids is not None else 0)
+                cv2.putText(frame, f"num of detected marker: {len(marker_ids) if marker_ids is not None else 0}", 
+                           (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                cv2.putText(frame, f"num of detected charuco: {len(charuco_ids) if charuco_ids is not None else 0}", 
+                           (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                
+                # 마커 그리기
+                cv2.aruco.drawDetectedMarkers(frame, marker_corners, marker_ids)
+                
+                # charuco 코너가 검출된 경우에만 그리기
+                if charuco_corners is not None and charuco_ids is not None:
+                    charuco_corners = charuco_corners.reshape(-1, 1, 2)  # reshape to correct format
+                    cv2.aruco.drawDetectedCornersCharuco(frame, charuco_corners, charuco_ids)
+                
+                cv2.imshow('Frame', frame)
             
             if charuco_ids is not None and len(charuco_ids) >= 4:
                 src_points = charuco_corners.reshape(-1, 2)
                 return src_points
             else:
-                return None # 최소 4개의 charuco코너가 검출되지 않으면 None 반환
+                if self.debug:
+                    print("최소 4개의 charuco코너가 검출되지 않았습니다.", end='\r', flush=True)
+                return None
+        
         else:
+            if self.debug:
+                print("aruco 마커가 검출되지 않았습니다.")
+                cv2.imshow('Frame', frame)
             return None # aruco 마커가 검출되지 않으면 None 반환
+
 
     def detect_aruco(self, frame):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         marker_corners, marker_ids, _ = cv2.aruco.detectMarkers(gray, self.dictionary, parameters=self.detector_param)
             
         if marker_ids is not None:
-            top_left = tuple(marker_corners[0][0][0].astype(int))
-            top_right = tuple(marker_corners[0][0][1].astype(int))
-            bottom_right = tuple(marker_corners[0][0][2].astype(int))
-            bottom_left = tuple(marker_corners[0][0][3].astype(int))
-            return np.array([top_left, top_right, bottom_left, bottom_right])
+            # num_markers = len(marker_ids)
+            # corners_array = np.zeros((num_markers, 4, 2), dtype=int)
+            
+            # for i in range(num_markers):
+            #     corners = marker_corners[i][0]
+            #     corners_array[i] = np.array([
+            #         tuple(corners[0].astype(int)),  # top_left
+            #         tuple(corners[1].astype(int)),  # top_right 
+            #         tuple(corners[2].astype(int)),  # bottom_right
+            #         tuple(corners[3].astype(int))   # bottom_left
+            #     ])
+            
+            # return corners_array.reshape(num_markers, 4, 2)
+            return marker_corners, marker_ids
         else:
             return None
 
@@ -122,54 +174,152 @@ class CharucoDetector:
     def find_homography(self, src_points, dst_points):
         '''
         return:
-            transform_matrix: 원본이미지(frame) 좌표계 -> charuco 좌표계(self.PIXEL_SIZE = 2cm)
+            transform_matrix: 원본이미지(frame) 좌표계 -> charuco 좌표계(self.MARKER_LENGTH = 2cm)
         '''
         if src_points is None:
             return None
         
-        # src_points와 dst_points의 개수를 맞춤
-        num_points = min(len(src_points), len(self.dst_points))
-        src_points = src_points[:num_points]
-        dst_points = dst_points[:num_points]
-        
-        # 디버깅을 위한 출력
-        # print("src_points shape:", src_points.shape) # 4,2
-        # print("dst_points shape:", dst_points.shape) # 4,2
-        
         try:
+            # src_points와 dst_points를 2D 형태로 변환
+            src_points = np.array(src_points, dtype=np.float32).reshape(-1, 2)  # (N*4, 2) 형태로 변환
+            dst_points = np.array(dst_points, dtype=np.float32).reshape(-1, 2)  # (N*4, 2) 형태로 변환
+            
+            # 디버깅을 위한 출력
+            # print("src_points shape:", src_points.shape)
+            # print("dst_points shape:", dst_points.shape)
+            
             transform_matrix, mask = cv2.findHomography(src_points, dst_points, cv2.RANSAC, 5.0)
             return transform_matrix
         except cv2.error as e:
             print("Homography 계산 중 오류 발생:", e)
             return None
+        except Exception as e:
+            print("예상치 못한 오류 발생:", e)
+            return None
+        
+def save_aruco_marker():
+    # 마커 크기 (픽셀 단위)
+    marker_size = 200
+    dictionary = aruco.getPredefinedDictionary(aruco.DICT_6X6_250)
+    # 여러 마커 생성 및 저장
+    for marker_id in range(10):  # 0부터 9까지 10개의 마커 생성
+        marker_image = aruco.generateImageMarker(dictionary, marker_id, marker_size)
+        cv2.imwrite(f"aruco_marker_{marker_id}.png", marker_image)
+
+    print("마커가 생성되어 저장되었습니다.")
+
+def save_charuco_boards():
+    # A4 해상도 설정 (300 DPI 기준)
+    a4_width, a4_height = 2480, 3508
+
+    # 보드 설정 값 (필요에 따라 조정)
+    board_settings = [
+        {'squaresX': 5, 'squaresY': 7, 'squareLength': 60, 'markerLength': 45, 'start_id': 0},
+        {'squaresX': 5, 'squaresY': 7, 'squareLength': 60, 'markerLength': 45, 'start_id': 20},
+        {'squaresX': 5, 'squaresY': 7, 'squareLength': 60, 'markerLength': 45, 'start_id': 40},
+        {'squaresX': 5, 'squaresY': 7, 'squareLength': 60, 'markerLength': 45, 'start_id': 60}
+    ]
+    # 각기 다른 보드 생성 및 저장
+    for idx, setting in enumerate(board_settings):
+        squaresX = setting['squaresX']
+        squaresY = setting['squaresY']
+        squareLength = setting['squareLength']
+        markerLength = setting['markerLength']
+        start_id = setting['start_id']
+        
+        # ArUco 딕셔너리 생성 (DICT_4X4_100 사용)
+        aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_100)
+        
+        # 새로운 딕셔너리 생성
+        new_dict = aruco.Dictionary(
+            _markerSize=4,  # 마커의 X/Y 차원 (DICT_4X4의 경우 4)
+            bytesList=np.empty(shape = (squaresX * squaresY, 2, 4), dtype = np.uint8)  # shape을 (2,4)로 변경
+        )
+        
+        # 기존 딕셔너리에서 새로운 ID로 마커 복사
+        for i in range(squaresX * squaresY):
+            marker_id = start_id + i
+            if marker_id < aruco_dict.bytesList.shape[0]:
+                new_dict.bytesList[i] = aruco_dict.bytesList[marker_id]
+        
+        # ChArUco 보드 생성 (새로운 딕셔너리 사용)
+        charuco_board = aruco.CharucoBoard(
+           (squaresX, squaresY), squareLength, markerLength, new_dict
+        )
+        
+        # 보드 이미지 생성
+        board_image = charuco_board.generateImage((a4_width, a4_height))
+        
+        # 이미지 저장
+        filename = f"charuco_board_{idx + 1}.png"
+        cv2.imwrite(filename, board_image)
+        print(f"{filename} 저장 완료")
 
 if __name__ == "__main__":
-    # # 마커 크기 (픽셀 단위)
-    # marker_size = 200
+    # print("opening camera...")
+    # cap = cv2.VideoCapture(1)
+    # print("start")
 
-    # # 여러 마커 생성 및 저장
-    # for marker_id in range(10):  # 0부터 9까지 10개의 마커 생성
-    #     marker_image = aruco.generateImageMarker(dictionary, marker_id, marker_size)
-    #     cv2.imwrite(f"aruco_marker_{marker_id}.png", marker_image)
+    cap = cv2.VideoCapture(1)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))  # Total number of frames
+    print(f"원본 비디오 크기: {width}x{height}, total_frames: {total_frames}")
+            
+    if not cap.isOpened():
+        print("카메라를 열 수 없습니다!")
+        exit()
 
-    # print("마커가 생성되어 저장되었습니다.")
+    # marker_detector = MarkerDetector(debug=True)
+    # while True:
+    #     ret, frame = cap.read()
+    #     if not ret:
+    #         break
+    #     result = marker_detector.detect_marker(frame.copy())
+    #     if result is not None:
+    #         top_left, top_right, bottom_left, bottom_right = result
+    #         print(f"top_left: {top_left}, top_right: {top_right}, bottom_left: {bottom_left}, bottom_right: {bottom_right}")
+    #     # 'q' 키를 누르면 종료
+    #     if cv2.waitKey(1) & 0xFF == ord('q'):
+    #         break
+    #     elif cv2.waitKey(1) & 0xFF == ord('s'):
+    #         cv2.imwrite("exp_marker.png", frame)
 
-    cap = cv2.VideoCapture(0)
-    print("camera open")
-    marker_detector = MarkerDetector(debug=True)
+    charuco_detector = CharucoDetector(debug=True)
+    # 비디오 저장을 위한 설정
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    out = cv2.VideoWriter('output.avi', fourcc, fps, (int(cap.get(3)), int(cap.get(4))))
+    
     while True:
         ret, frame = cap.read()
         if not ret:
+            cap.set(cv2.CAP_PROP_POS_FRAMES, 0)  # 비디오의 시작 위치로 되돌림
             break
-        result = marker_detector.detect_marker(frame.copy())
-        if result is not None:
-            top_left, top_right, bottom_left, bottom_right = result
-            print(f"top_left: {top_left}, top_right: {top_right}, bottom_left: {bottom_left}, bottom_right: {bottom_right}")
-        # 'q' 키를 누르면 종료
+            
+        # 프레임 저장
+        out.write(frame)
+        
+        marker_corners, marker_ids = charuco_detector.detect_aruco(frame)
+        try:    
+            transform_matrix = charuco_detector.find_homography(marker_corners, charuco_detector.dst_points_aruco[marker_ids])
+        except Exception as e:
+            print(f"homography error: {e}")
+
+        if transform_matrix is not None:
+            if not hasattr(charuco_detector, 'transform_matrices'):
+                charuco_detector.transform_matrices = []
+            charuco_detector.transform_matrices.append(transform_matrix)
+        
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
-        elif cv2.waitKey(1) & 0xFF == ord('s'):
-            cv2.imwrite("exp_marker.png", frame)
 
+    # while 루프가 끝난 후
+    if hasattr(charuco_detector, 'transform_matrices') and len(charuco_detector.transform_matrices) > 0:
+        # 모든 변환 행렬의 평균 계산
+        avg_transform_matrix = np.mean(charuco_detector.transform_matrices, axis=0)
+        print("평균 변환 행렬:")
+        print(avg_transform_matrix)
+    
     cap.release()
     cv2.destroyAllWindows()
