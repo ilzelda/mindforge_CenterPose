@@ -163,7 +163,10 @@ def demo(opt, meta):
                 # z_length = round(warped_box_size_pixel['z'] / marker_detector.MARKER_LENGTH * 3, -1)
                 # y_length = round(((x_length / dets['obj_scale'][0]) + (z_length / dets['obj_scale'][2])) * 0.5, -1)
                 y_sum += x_length / dets['obj_scale'][0]
-                y_length = round_custom(y_sum / sum_count)
+                try:
+                    y_length = round_custom(y_sum / sum_count)
+                except Exception as e:
+                    print(f"y_length error: {e}, y_sum: {y_sum}, sum_count: {sum_count}")
                 
                 if opt.demo == 'webcam':
                     print(f"obj_scale      - X: {dets['obj_scale'][0]:05.2f},   Y: {dets['obj_scale'][1]:05.2f},   Z: {dets['obj_scale'][2]:05.2f}",
@@ -225,38 +228,38 @@ def demo(opt, meta):
                         print(f"log saved into dimension_log.json")
                     test_mode = False
                     test_count = 0
+            if opt.os == 'windows':
+                key = cv2.waitKey(1)
+                # press 'q' to quit
+                if key & 0xFF == ord('q'):
+                    break
 
-            key = cv2.waitKey(1)
-            # press 'q' to quit
-            if key & 0xFF == ord('q'):
-                break
-
-            if key & 0xFF == ord('r'):
-                importlib.reload(util_dim_module)
-                importlib.reload(my_detector_module)
-                detector = my_detector_module.MyDetector(opt)
-                importlib.reload(aruco_marker_module)
-                marker_detector = CharucoDetector(debug=True)
-                print("reload")
-            
-            if key & 0xFF == ord('t'):
-                if test_mode:
-                    test_mode = False
-                    test_count = 0
-                else:
-                    data = {
-                        'obj_scale': {
-                            'X': [],
-                            'Y': [], 
-                            'Z': []
-                        },
-                        'length': {
-                            'X': [],
-                            'Y': [],
-                            'Z': []
+                if key & 0xFF == ord('r'):
+                    importlib.reload(util_dim_module)
+                    importlib.reload(my_detector_module)
+                    detector = my_detector_module.MyDetector(opt)
+                    importlib.reload(aruco_marker_module)
+                    marker_detector = CharucoDetector(debug=True)
+                    print("reload")
+                
+                if key & 0xFF == ord('t'):
+                    if test_mode:
+                        test_mode = False
+                        test_count = 0
+                    else:
+                        data = {
+                            'obj_scale': {
+                                'X': [],
+                                'Y': [], 
+                                'Z': []
+                            },
+                            'length': {
+                                'X': [],
+                                'Y': [],
+                                'Z': []
+                            }
                         }
-                    }
-                    test_mode = True
+                        test_mode = True
             frame_idx += 1
         
                         
@@ -328,13 +331,16 @@ if __name__ == '__main__':
 
     # Default params with commandline input
     parser = opts().parser
-    parser.add_argument('--output_dir', default="./demo_output/new/", help='출력 디렉토리')
+    parser.add_argument('--os', default="linux", help='os')
     opt = parser.parse_args()
-    opt.output_dir = f"./demo_output/{opt.output_dir}/"
+    
+    opt.output_dir = f"./demo_output/{opt.load_model.split('/')[-2]}/{opt.load_model.split('/')[-1].split('.')[0]}/{opt.demo.split('/')[-1].split('.')[0]}"
     # 출력 디렉토리가 없으면 생성
     if not os.path.exists(opt.output_dir):
         os.makedirs(opt.output_dir)
         print(f"출력 디렉토리 생성됨: {opt.output_dir}")
+    else:
+        print(f"출력 디렉토리 : {opt.output_dir}")
 
     # Local machine configuration example for CenterPose
     # opt.c = 'cup' # Only meaningful when enables show_axes option
@@ -400,5 +406,5 @@ if __name__ == '__main__':
     opt.c = 'custom_box'
     opt.arch = 'dlav1_34'
     opt.use_pnp = False
-
+    print('rep_mode : ',opt.rep_mode)
     demo(opt, meta)
