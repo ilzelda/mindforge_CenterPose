@@ -150,8 +150,11 @@ class CharucoDetector:
 
     def detect_aruco(self, frame):
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        marker_corners, marker_ids, _ = cv2.aruco.detectMarkers(gray, self.dictionary, parameters=self.detector_param)
-            
+        
+        # OpenCV 4.x 버전용 ArUco 검출 코드
+        detector = cv2.aruco.ArucoDetector(self.dictionary, self.detector_param)
+        marker_corners, marker_ids, _ = detector.detectMarkers(gray)
+        
         if marker_ids is not None:
             # num_markers = len(marker_ids)
             # corners_array = np.zeros((num_markers, 4, 2), dtype=int)

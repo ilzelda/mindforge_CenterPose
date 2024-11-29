@@ -19,6 +19,9 @@ from lib.utils.image import draw_dense_reg
 import math
 import copy
 import scipy.stats as stats
+from PIL import Image
+import random
+from cv2 import aruco
 
 import albumentations as A
 
@@ -56,10 +59,15 @@ class ObjectPoseDataset(data.Dataset):
     num_joints = 8
     default_resolution = [512, 512]
 
-    # Todo: not important for now
-    mean = np.array([0.40789654, 0.44719302, 0.47026115],
+    # # Todo: not important for now
+    # mean = np.array([0.40789654, 0.44719302, 0.47026115],
+    #                 dtype=np.float32).reshape(1, 1, 3)
+    # std = np.array([0.28863828, 0.27408164, 0.27809835],
+    #                dtype=np.float32).reshape(1, 1, 3)
+    # custom dataset
+    mean = np.array([0.40758894, 0.45407891, 0.48719344],
                     dtype=np.float32).reshape(1, 1, 3)
-    std = np.array([0.28863828, 0.27408164, 0.27809835],
+    std = np.array([0.22862671, 0.23217187, 0.2466083 ],
                    dtype=np.float32).reshape(1, 1, 3)
 
     # Swap the index horizontally
@@ -102,6 +110,21 @@ class ObjectPoseDataset(data.Dataset):
         'shoe': [
             [0.10308848289662519, 0.10932616184503478, 0.2611737789760352, 1.0301976264129833, 2.6157393112424328, ],
             [0.02274768925924402, 0.044958380226590516, 0.04589720205423542, 0.3271000267177176, 0.8460337534776092, ]],
+    }
+
+    dimension_ref_custom = {
+        'box_monitor_1': [50, 7, 32],
+        'box_monitor_2': [7, 32, 50],
+        'box_barcode_1': [23, 12, 26],
+        'box_barcode_2': [23, 26, 12],
+        'box_blacktea_1': [18, 7, 20.5],
+        'box_blacktea_2': [7, 18, 20.5],
+        'box_maxim_1': [28, 14, 17.5],
+        'box_maxim_2': [14, 17.5, 28],
+        'box_tea_1': [20.5, 8, 20],
+        'box_tea_2': [20, 20.5, 8],
+        'box_tissue_1': [11.5, 9.5, 23.5],
+        'box_tissue_2': [11.5, 23.5, 9.5],
     }
 
     def __init__(self, opt, split):
@@ -248,6 +271,20 @@ class ObjectPoseDataset(data.Dataset):
                 self.videos[new_item] = []
                 self.videos[new_item].append(i)
 
+        self.bg_ratio = 0.2
+        bg_paths = []
+        for root, dirs, files in os.walk("/mnt/SUN397/SUN397"):
+            for file in files:
+                if file.endswith(".jpg"):
+                    bg_paths.append(os.path.join(root, file))
+        bg_paths = random.sample(bg_paths, int(self.num_samples * self.bg_ratio))
+        self.bg_imgs = []
+        for p in bg_paths:
+            img = Image.open(p)
+            self.bg_imgs.append(img)
+
+        self.aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_100)
+
     def __len__(self):
         return self.num_samples
 
@@ -262,9 +299,15 @@ class ObjectPoseDataset(data.Dataset):
         c = c_ori.copy()
         if (not self.opt.not_rand_crop) and not disturb:
             # Training for current frame
-            aug_s = np.random.choice(np.arange(0.6, 1.4, 0.1))
-            w_border = self._get_border(128, width)
-            h_border = self._get_border(128, height)
+            # aug_s = np.random.choice(np.arange(0.6, 1.4, 0.1))
+            aug_s = np.random.choice(np.arange(0.8, 1.2, 0.1))
+
+            # w_border = self._get_border(256, width)
+            # h_border = self._get_border(256, height)
+            translate = 0.9
+            w_border = self._get_border(int(width * translate), width)
+            h_border = self._get_border(int(height * translate), height)
+            
             c[0] = np.random.randint(low=w_border, high=width - w_border)
             c[1] = np.random.randint(low=h_border, high=height - h_border)
         else:
@@ -276,8 +319,11 @@ class ObjectPoseDataset(data.Dataset):
             c[1] += s * np.clip(np.random.randn() * cf, -2 * cf, 2 * cf)
             aug_s = np.clip(np.random.randn() * sf + 1, 1 - sf, 1 + sf)
 
-        if np.random.random() < self.opt.aug_rot:
+        # if np.random.random() < self.opt.aug_rot:
+        if np.random.random() < 0.5:
             rf = self.opt.rotate  # 0 - 180
+            rf = random.randint(0,180)  # 0 - 180
+
             rot = 2 * (np.random.rand() - 0.5) * rf
             # rot = np.clip(np.random.randn() * rf, -rf * 2, rf * 2)
         else:
@@ -307,6 +353,50 @@ class ObjectPoseDataset(data.Dataset):
         inp = (inp - self.mean) / self.std
         inp = inp.transpose(2, 0, 1)
         return inp
+
+    def change_background(self, img, mask, bg):
+        # oh = img.height  
+        # ow = img.width
+        oh, ow = img.shape[:2]
+        bg = cv2.resize(bg, (ow, oh))
+        
+        # Split channels
+        img_channels = cv2.split(img)
+        bg_channels = cv2.split(bg) 
+        mask_channels = cv2.split(mask)
+        
+        # Create output channels
+        out_channels = []
+        
+        # Blend each channel
+        for c in range(3):
+            neg_mask = 1 - mask_channels[c]/255.0
+            pos_mask = mask_channels[c]/255.0
+            blended = img_channels[c] * pos_mask + bg_channels[c] * neg_mask
+            out_channels.append(blended.astype(np.uint8))
+            
+        # Merge channels
+        out = cv2.merge(out_channels)
+    
+        return out
+    
+    def add_aruco_markers_to_bg(self, bg, dictionary, num_markers=5):
+        bg_height, bg_width = bg.shape[:2]
+        marker_size = min(bg_height, bg_width) // 15
+
+        for _ in range(num_markers):
+            marker_id = random.randint(0, dictionary.bytesList.shape[0] - 1)
+            marker_image = aruco.generateImageMarker(dictionary, marker_id, marker_size)
+            marker_image = np.repeat(marker_image[:, :, np.newaxis], 3, axis=2)
+            
+            # Random position for the marker
+            x_offset = random.randint(0, bg_width - marker_size)
+            y_offset = random.randint(0, bg_height - marker_size)
+            
+            # Insert the marker into the background
+            bg[y_offset:y_offset + marker_size, x_offset:x_offset + marker_size] = marker_image
+        
+        return bg
 
     def __getitem__(self, index):
         # # Debug only
@@ -375,8 +465,41 @@ class ObjectPoseDataset(data.Dataset):
             c, s, rot, [self.opt.input_res, self.opt.input_res])
 
         try:
+            # bg switch
+            if self.opt.custom and self.split == 'train' :
+                _ann = anns['labelingInfo'][0]['3DBox']
+                _xy_dict = _ann["location"][0]
+                _corner_order = [9,8,4,5,1,7,3,6,2]
+                _label = [[int(_xy_dict[f"x{i}"]), int(_xy_dict[f"y{i}"])] for i in _corner_order]  
+                _pts_ori = np.array(_label)
+                if flipped:
+                    _pts_ori[:, 0] = width - _pts_ori[:, 0] - 1
+                _corners = _pts_ori[1:] # 8개의 코너 포인트
+
+                # 정수형 좌표로 변환
+                _corners = _corners.astype(np.int32)
+                
+                # 빈 마스크 생성 
+                mask = np.zeros((img.shape[0], img.shape[1]), dtype=np.uint8)
+                
+                # 코너 포인트들로 다각형 그리기
+                hull = cv2.convexHull(_corners)
+                cv2.fillPoly(mask, [hull], 255)
+                
+                # 마스크를 3채널로 확장
+                mask = mask[:,:,np.newaxis]
+                mask = np.repeat(mask, 3, axis=2)
+
+                if np.random.random() < self.bg_ratio:
+                    bg = random.choice(self.bg_imgs)
+                    bg = np.array(bg.resize((img.shape[1], img.shape[0])))
+                else:
+                    bg = img.copy()
+                bg = self.add_aruco_markers_to_bg(bg, self.aruco_dict, num_markers=20)
+                img = self.change_background(img, mask, bg)
             inp = self._get_input(img, trans_input)
-        except:
+        except Exception as e:
+            print("Error in __getitem__() (background switch?): ", e)
             return None
 
         output_res = self.opt.output_res
@@ -986,34 +1109,35 @@ class ObjectPoseDataset(data.Dataset):
         # <editor-fold desc="Step2: Work on the current frame">
         if not self.opt.custom :
             cam_projection_matrix = anns['camera_data']['camera_projection_matrix']
-        for k in range(num_objs):
+        for k in range(num_objs): # custom : num_objs = 1
             if not self.opt.custom : ann = anns['objects'][k]
             else : 
                 ann = anns["labelingInfo"][k]["3DBox"]
-                if path_json.split('/')[-3] == 'box_monitor_1':
-                    ann['scale'] = [50, 7, 32]
-                elif path_json.split('/')[-3] == 'box_monitor_2':
-                    ann['scale'] = [7, 32, 50]
-                elif path_json.split('/')[-3] == 'box_barcode_1':
-                    ann['scale'] = [23, 12, 26]
-                elif path_json.split('/')[-3] == 'box_barcode_2':
-                    ann['scale'] = [23, 26, 12]
-                elif path_json.split('/')[-3] == 'box_blacktea_1':
-                    ann['scale'] = [18, 7, 22]
-                elif path_json.split('/')[-3] == 'box_blacktea_2':
-                    ann['scale'] = [7,22, 18]
-                # elif path_json.split('/')[-3] == 'box_maxim_1':
-                #     ann['scale'] = [28, 14, 17.5]
-                # elif path_json.split('/')[-3] == 'box_maxim_2':
-                #     ann['scale'] = [14, 17.5, 28]
-                elif path_json.split('/')[-3] == 'box_tea_1':
-                    ann['scale'] = [20.5, 8, 20]
-                elif path_json.split('/')[-3] == 'box_tea_2':
-                    ann['scale'] = [20, 20.5, 8]
-                elif path_json.split('/')[-3] == 'box_tissue_1':
-                    ann['scale'] = [11.5, 9.5, 23.5]
-                elif path_json.split('/')[-3] == 'box_tissue_2':
-                    ann['scale'] = [11.5, 23.5, 9.5]
+                if self.opt.c != 'parcel':
+                    if path_json.split('/')[-3] == 'box_monitor_1':
+                        ann['scale'] = self.dimension_ref_custom['box_monitor_1']
+                    elif path_json.split('/')[-3] == 'box_monitor_2':
+                        ann['scale'] = self.dimension_ref_custom['box_monitor_2']
+                    elif path_json.split('/')[-3] == 'box_barcode_1':
+                        ann['scale'] = self.dimension_ref_custom['box_barcode_1']
+                    elif path_json.split('/')[-3] == 'box_barcode_2':
+                        ann['scale'] = self.dimension_ref_custom['box_barcode_2']
+                    elif path_json.split('/')[-3] == 'box_blacktea_1':
+                        ann['scale'] = self.dimension_ref_custom['box_blacktea_1']
+                    elif path_json.split('/')[-3] == 'box_blacktea_2':
+                        ann['scale'] = self.dimension_ref_custom['box_blacktea_2']
+                    elif path_json.split('/')[-3] == 'box_maxim_1':
+                        ann['scale'] = self.dimension_ref_custom['box_maxim_1']
+                    elif path_json.split('/')[-3] == 'box_maxim_2':
+                        ann['scale'] = self.dimension_ref_custom['box_maxim_2']
+                    elif path_json.split('/')[-3] == 'box_tea_1':
+                        ann['scale'] = self.dimension_ref_custom['box_tea_1']
+                    elif path_json.split('/')[-3] == 'box_tea_2':
+                        ann['scale'] = self.dimension_ref_custom['box_tea_2']
+                    elif path_json.split('/')[-3] == 'box_tissue_1':
+                        ann['scale'] = self.dimension_ref_custom['box_tissue_1']
+                    elif path_json.split('/')[-3] == 'box_tissue_2':
+                        ann['scale'] = self.dimension_ref_custom['box_tissue_2']
 
             # Todo: Only for chair category for now
             if 'symmetric' in ann:

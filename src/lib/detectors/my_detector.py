@@ -35,8 +35,8 @@ class MyDebugger(Debugger):
             self.accumulated_kps = np.array(kps)
 
     def add_coco_hp(self, points, img_id='default', pred_flag='pred', PAPER_DISPLAY=False):
-        self.check_different_pose(points)
-        points = self.accumulated_kps.mean(axis=0)
+        # self.check_different_pose(points)
+        # points = self.accumulated_kps.mean(axis=0)
         points = np.array(points, dtype=np.int32).reshape(self.num_joints, 2)
         
 
