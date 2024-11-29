@@ -40,6 +40,9 @@ def get_affine_transform(center,
                          inv=0):
     if not isinstance(scale, np.ndarray) and not isinstance(scale, list):
         scale = np.array([scale, scale], dtype=np.float32)
+    '''
+        return cv2.getAffineTransform()
+    '''
 
     scale_tmp = scale
     src_w = scale_tmp[0]
