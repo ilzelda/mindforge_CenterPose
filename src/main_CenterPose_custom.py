@@ -23,8 +23,10 @@ from lib.datasets.dataset_combined import ObjectPoseDataset
 
 
 def main(opt):
+    torch.cuda.empty_cache()
     torch.manual_seed(opt.seed)
     torch.backends.cudnn.benchmark = not opt.not_cuda_benchmark and not opt.test
+    torch.cuda.set_per_process_memory_fraction(0.8)
 
     Dataset = ObjectPoseDataset
 
@@ -33,8 +35,14 @@ def main(opt):
 
     logger = Logger(opt)
 
+    # opt.gpus_str = "0, 1"
     os.environ['CUDA_VISIBLE_DEVICES'] = opt.gpus_str
+    
+    # opt.gpus = [0, 1] or [-1]
     opt.device = torch.device('cuda' if opt.gpus[0] >= 0 else 'cpu')
+    # opt.device = torch.device('cuda:1')
+
+
 
     print('Creating model...')
     model = create_model(opt.arch, opt.heads, opt.head_conv, opt=opt)
@@ -134,7 +142,9 @@ if __name__ == '__main__':
     opt = opt.parser.parse_args()
 
     # Local configuration
-    opt.c = 'custom_box'
+    # opt.c = 'custom_box'
+    opt.c = 'parcel'
+
     opt.arch='dlav1_34'
     opt.obj_scale = True
     opt.obj_scale_weight = 1
@@ -145,9 +155,9 @@ if __name__ == '__main__':
     opt.num_epochs = 200
     opt.val_intervals = 5
     opt.lr_step = '90,120'
-    opt.batch_size = 16
+    opt.batch_size = 4
     opt.lr = 6e-5
-    opt.gpus = '0'
+    opt.gpus = '1'
     opt.num_workers = 4
     opt.print_iter = 5
     opt.debug = 5
@@ -159,8 +169,8 @@ if __name__ == '__main__':
 
     # Copy from parse function from opts.py
     opt.gpus_str = opt.gpus
-    opt.gpus = [int(gpu) for gpu in opt.gpus.split(',')]
-    opt.gpus = [i for i in range(len(opt.gpus))] if opt.gpus[0] >= 0 else [-1]
+    opt.gpus = [int(gpu) for gpu in opt.gpus.split(',')] # '0, 1' -> [0, 1]
+    opt.gpus = [i for i in range(len(opt.gpus))] if opt.gpus[0] >= 0 else [-1] # [1, 2] -> [0, 1] or [-1]
     opt.lr_step = [int(i) for i in opt.lr_step.split(',')]
     opt.test_scales = [float(i) for i in opt.test_scales.split(',')]
 
@@ -197,15 +207,24 @@ if __name__ == '__main__':
     opt.exp_dir = os.path.join(opt.root_dir, 'exp', opt.task) # CenterPose/exp/opt.task
 
     time_str = time.strftime('%Y-%m-%d-%H-%M')
-    opt.save_dir = os.path.join(opt.exp_dir, f'{opt.exp_id}_{time_str}')
+    # opt.save_dir = os.path.join(opt.exp_dir, f'{opt.exp_id}_{time_str}')
+    opt.save_dir = os.path.join('/mnt/CenterPose_exp/object_pose', f'{opt.exp_id}_{time_str}')
+
     opt.debug_dir = os.path.join(opt.save_dir, 'debug')
     print('The output will be saved to ', opt.save_dir)
 
     # custom options
     opt.custom = True
     opt.num_workers = 0
+    opt.batch_size = 4
     # opt.obj_scale_weight = 0
+    # opt.obj_scale = False
     
     if opt.c == 'custom_box':
         opt.data_dir = '/home/CenterPose/data/custom_box'
+    elif opt.c == 'parcel':
+        opt.data_dir = '/home/CenterPose/data/parcel'
+
+    os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512'
+
     main(opt)
