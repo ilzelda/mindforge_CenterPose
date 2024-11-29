@@ -11,4 +11,6 @@ src/command.txt
 src/inference_window.bat
 src/inference.sh
 src/*.png
+src/*.avi
+src/*.mp4
 exp_charuco.png
