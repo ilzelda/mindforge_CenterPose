@@ -11,6 +11,9 @@ import torch
 from progress.bar import Bar
 from lib.models.data_parallel import DataParallel
 from lib.utils.utils import AverageMeter
+
+from lib.models.decode import object_pose_decode
+
 import cv2
 
 
@@ -66,6 +69,10 @@ class BaseTrainer(object):
         results = {}
         data_time, batch_time = AverageMeter(), AverageMeter()
         avg_loss_stats = {l: AverageMeter() for l in self.loss_stats}
+        
+        if phase == 'val':
+            avg_loss_stats['kps_err'] = AverageMeter()
+        
         num_iters = len(data_loader) if opt.num_iters < 0 else opt.num_iters
         bar = Bar('{}/{}'.format(opt.task, opt.exp_id), max=num_iters)
         end = time.time()
@@ -86,6 +93,7 @@ class BaseTrainer(object):
                     batch[k] = batch[k].to(device=opt.device, non_blocking=True)
 
             output, loss, loss_stats, choice_list = model_with_loss(batch, phase)
+            
             loss = loss.mean()  # No effect for our case
             if phase == 'train':
                 self.optimizer.zero_grad()
@@ -97,6 +105,10 @@ class BaseTrainer(object):
                     torch.nn.utils.clip_grad_norm_(self.model_with_loss.model.parameters(), 100.)
 
                 self.optimizer.step()
+            else :
+                # pass
+                loss_stats["kps_err"] = self.calc_custom_err(batch, output, iter_id, choice_list)
+            
             batch_time.update(time.time() - end)
             end = time.time()
 
@@ -138,9 +150,56 @@ class BaseTrainer(object):
             del output, loss, loss_stats
 
         bar.finish()
+
+        
         ret = {k: v.avg for k, v in avg_loss_stats.items()}
         ret['time'] = bar.elapsed_td.total_seconds() / 60.
         return ret, results, writer_imgs
+
+    def calc_custom_err(self, batch, output, iter_id, choice_list):
+        opt = self.opt
+
+        hps_uncertainty = output['hps_uncertainty'] if opt.hps_uncertainty else None
+        reg = output['reg'] if opt.reg_offset else None
+        hm_hp = output['hm_hp'] if opt.hm_hp else None
+        hp_offset = output['hp_offset'] if opt.reg_hp_offset else None
+        obj_scale = output['scale'] if opt.obj_scale else None
+        obj_scale_uncertainty = output['scale_uncertainty'] if opt.obj_scale_uncertainty else None
+        wh = output['wh'] if opt.reg_bbox else None
+        tracking = output['tracking'] if 'tracking' in opt.heads else None
+        tracking_hp = output['tracking_hp'] if 'tracking_hp' in opt.heads else None
+
+        dets = object_pose_decode(
+            output['hm'], output['hps'], wh=wh, kps_displacement_std=hps_uncertainty, obj_scale=obj_scale,
+            obj_scale_uncertainty=obj_scale_uncertainty,
+            reg=reg, hm_hp=hm_hp, hp_offset=hp_offset, tracking=tracking, tracking_hp=tracking_hp, opt=self.opt)
+
+        for k in dets:
+            dets[k] = dets[k].detach().cpu().numpy()
+
+        dets['bboxes'] *= opt.input_res / opt.output_res
+        dets['kps'] *= opt.input_res / opt.output_res
+
+        # Todo: Right now, only keep the best matched gt
+        dets_gt = batch['meta']['gt_det']
+        dets_gt = torch.stack([dets_gt[idx][choice] for idx, choice in enumerate(choice_list)])
+        dets_gt = dets_gt.numpy()
+
+        dets_gt[:, :, :4] *= opt.input_res / opt.output_res  # bbox
+        dets_gt[:, :, 5:21] *= opt.input_res / opt.output_res  # kps
+        dets_gt[:, :, 25:27] *= opt.input_res / opt.output_res  # tracking
+        dets_gt[:, :, 28:44] *= opt.input_res / opt.output_res  # tracking_hp
+
+        kps_errs = []
+        for i in range(len(dets['scores'])):
+            for k in range(len(dets['scores'][i])):
+                    if dets['scores'][i][k][0] > opt.center_thresh:
+                        pred = dets['kps'][i][k].reshape(-1, 2)
+                        gt = dets_gt[i][k][5:21].reshape(-1, 2)
+                        kps_err = torch.tensor(pred- gt).norm(2, dim=1)
+                        kps_errs.append(kps_err.mean().item())
+
+        return torch.tensor(kps_errs).mean()
 
     def debug(self, batch, output, iter_id):
         raise NotImplementedError

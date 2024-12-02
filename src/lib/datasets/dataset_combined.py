@@ -277,11 +277,7 @@ class ObjectPoseDataset(data.Dataset):
             for file in files:
                 if file.endswith(".jpg"):
                     bg_paths.append(os.path.join(root, file))
-        bg_paths = random.sample(bg_paths, int(self.num_samples * self.bg_ratio))
-        self.bg_imgs = []
-        for p in bg_paths:
-            img = Image.open(p)
-            self.bg_imgs.append(img)
+        self.bg_paths = random.sample(bg_paths, int(self.num_samples * self.bg_ratio))
 
         self.aruco_dict = aruco.getPredefinedDictionary(aruco.DICT_4X4_100)
 
@@ -491,7 +487,7 @@ class ObjectPoseDataset(data.Dataset):
                 mask = np.repeat(mask, 3, axis=2)
 
                 if np.random.random() < self.bg_ratio:
-                    bg = random.choice(self.bg_imgs)
+                    bg = Image.open(random.choice(self.bg_paths))
                     bg = np.array(bg.resize((img.shape[1], img.shape[0])))
                 else:
                     bg = img.copy()
