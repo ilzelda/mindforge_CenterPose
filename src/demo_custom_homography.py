@@ -14,6 +14,7 @@ import numpy as np
 from tqdm import tqdm
 import json
 import math
+import shutil
 
 from lib.opts import opts
 from lib.detectors.detector_factory import detector_factory
@@ -56,8 +57,8 @@ def demo(opt, meta):
     if opt.demo == 'webcam' or \
             opt.demo[opt.demo.rfind('.') + 1:].lower() in video_ext:
         
-        print("opening webcam...")
         if opt.demo == 'webcam' :
+            print("opening webcam...")
             cam = cv2.VideoCapture(1)
         else:
             cam = cv2.VideoCapture(opt.demo)
@@ -72,6 +73,7 @@ def demo(opt, meta):
         print("start")
         
         test_mode = False
+
         test_count = 0
         marker_detector = CharucoDetector(debug=True)
 
@@ -113,6 +115,8 @@ def demo(opt, meta):
 
             dets['obj_scale'] = dets['obj_scale'].reshape(100, -1)[0]
             out_img = image_dict['out_img_pred_0']
+            # 프레임 번호 표시
+            cv2.putText(out_img, f"Frame: {frame_idx}", (out_img.shape[1] - 100, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             
             marker_detected = marker_thread.result is not None
             box_detected = (np.array(dets['scores'])[0,:,0] > opt.center_thresh).any()
@@ -152,21 +156,22 @@ def demo(opt, meta):
                 box_size_pixel = calc_box_size_pixel(dets['kps'])
                 warped_box_size_pixel = calc_box_size_pixel(kps_BEV)
                
-                x_sum += warped_box_size_pixel['x']
-                z_sum += warped_box_size_pixel['z']
-                sum_count += 1
+                # x_sum += warped_box_size_pixel['x']
+                # z_sum += warped_box_size_pixel['z']
+                # sum_count += 1
+                # x_length = round_custom(x_sum / sum_count / marker_detector.MARKER_LENGTH * 3)
+                # z_length = round_custom(z_sum / sum_count / marker_detector.MARKER_LENGTH * 3)
 
-                x_length = round_custom(x_sum / sum_count / marker_detector.MARKER_LENGTH * 3)
-                z_length = round_custom(z_sum / sum_count / marker_detector.MARKER_LENGTH * 3)
+                x_length = warped_box_size_pixel['x'] / marker_detector.MARKER_LENGTH * 3
+                z_length = warped_box_size_pixel['z'] / marker_detector.MARKER_LENGTH * 3
                 
-                # x_length = round(warped_box_size_pixel['x'] / marker_detector.MARKER_LENGTH * 3, -1)
-                # z_length = round(warped_box_size_pixel['z'] / marker_detector.MARKER_LENGTH * 3, -1)
-                # y_length = round(((x_length / dets['obj_scale'][0]) + (z_length / dets['obj_scale'][2])) * 0.5, -1)
-                y_sum += x_length / dets['obj_scale'][0]
-                try:
-                    y_length = round_custom(y_sum / sum_count)
-                except Exception as e:
-                    print(f"y_length error: {e}, y_sum: {y_sum}, sum_count: {sum_count}")
+                y_length = x_length / dets['obj_scale'][0]
+                
+                # y_sum += x_length / dets['obj_scale'][0]
+                # try:
+                #     y_length = round_custom(y_sum / sum_count)
+                # except Exception as e:
+                #     print(f"y_length error: {e}, y_sum: {y_sum}, sum_count: {sum_count}")
                 
                 if opt.demo == 'webcam':
                     print(f"obj_scale      - X: {dets['obj_scale'][0]:05.2f},   Y: {dets['obj_scale'][1]:05.2f},   Z: {dets['obj_scale'][2]:05.2f}",
@@ -176,9 +181,20 @@ def demo(opt, meta):
                     print(f"warped size    - X: {warped_box_size_pixel['x']:05.2f}px, Y: {warped_box_size_pixel['y']:05.2f}px, Z: {warped_box_size_pixel['z']:05.2f}px",
                             end='\n\033[F\033[F\033[F', flush=True)
                 else:
-                    pbar.write(f"obj_scale      - X: {dets['obj_scale'][0]:05.2f},   Y: {dets['obj_scale'][1]:05.2f},   Z: {dets['obj_scale'][2]:05.2f}")
-                    pbar.write(f"box pixel size - X: {box_size_pixel['x']:05.2f}px, Y: {box_size_pixel['y']:05.2f}px, Z: {box_size_pixel['z']:05.2f}px")
-                    pbar.write(f"warped size    - X: {warped_box_size_pixel['x']:05.2f}px, Y: {warped_box_size_pixel['y']:05.2f}px, Z: {warped_box_size_pixel['z']:05.2f}px")
+                    # pbar.write(f"obj_scale      - X: {dets['obj_scale'][0]:05.2f},   Y: {dets['obj_scale'][1]:05.2f},   Z: {dets['obj_scale'][2]:05.2f}")
+                    # pbar.write(f"box pixel size - X: {box_size_pixel['x']:05.2f}px, Y: {box_size_pixel['y']:05.2f}px, Z: {box_size_pixel['z']:05.2f}px")
+                    # pbar.write(f"warped size    - X: {warped_box_size_pixel['x']:05.2f}px, Y: {warped_box_size_pixel['y']:05.2f}px, Z: {warped_box_size_pixel['z']:05.2f}px")
+                    pbar.set_postfix({
+                        "obj_scale_X": f"{dets['obj_scale'][0]:05.2f}",
+                        "obj_scale_Y": f"{dets['obj_scale'][1]:05.2f}",
+                        "obj_scale_Z": f"{dets['obj_scale'][2]:05.2f}",
+                        "box_size_X": f"{box_size_pixel['x']:05.2f}px",
+                        "box_size_Y": f"{box_size_pixel['y']:05.2f}px",
+                        "box_size_Z": f"{box_size_pixel['z']:05.2f}px",
+                        "warped_X": f"{warped_box_size_pixel['x']:05.2f}px",
+                        "warped_Y": f"{warped_box_size_pixel['y']:05.2f}px",
+                        "warped_Z": f"{warped_box_size_pixel['z']:05.2f}px"
+                    })
                 # 계산된 dimension 표시
                 # ori = 3
                 colors = [(0, 255, 0), (128, 0, 128), (0, 128, 255)]
@@ -192,7 +208,7 @@ def demo(opt, meta):
                     cv2.rectangle(out_img, (10, 50 + 20 * i), (10 + text_width, 65 + 20 * i), (255, 255, 255), -1)
                     # 텍스트 그리기
                     cv2.putText(out_img, text, (10, 60 + 20 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colors[i], 1)
-
+                
                 # marker_edges = [[0,1], [0,2]]
                 # for i,edge in enumerate(marker_edges):
                 #     start_point = (int(info['marker_corners'][edge[0]][0]), int(info['marker_corners'][edge[0]][1]))
@@ -210,6 +226,19 @@ def demo(opt, meta):
                 cv2.imwrite(output_path, out_img)
                 pbar.update(1)
                 # print(f"프레임 {idx} 저장됨: {output_path}")
+            if opt.labelling \
+                and ((frame_idx % (cam.get(cv2.CAP_PROP_FRAME_COUNT) // 20) == 0) \
+                        # or (frame_idx % (cam.get(cv2.CAP_PROP_FRAME_COUNT) // 30) == 20)
+                        ):
+                cv2.imwrite(f"{opt.output_dir}/_output/frame_{frame_idx:04d}.jpg", frame)
+                with open(f"{opt.output_dir}/_output/frame_{frame_idx:04d}.json", 'w') as f:
+                    kps = {}
+                    for i, n in enumerate([1,5,7,3,2,6,8,4]):
+                        kps[f"x{i+1}"] = float(dets['kps'][n-1][0])
+                        kps[f"y{i+1}"] = float(dets['kps'][n-1][1])
+                        kps[f"z{i+1}"] = 0 if i < 4 else 1
+                    info = {"metaData":"","inspRejectYn":"N","labelingInfo":[{"3DBox":{"location":[kps],"label":"box","type":"3DBox"}}]}
+                    json.dump(info, f, indent=2)
             
             if test_mode and frame_idx % (int(fps)//2) == 0:
                 if test_count < 10:
@@ -228,7 +257,7 @@ def demo(opt, meta):
                         print(f"log saved into dimension_log.json")
                     test_mode = False
                     test_count = 0
-            if opt.os == 'windows':
+            if opt.demo == 'webcam':
                 key = cv2.waitKey(1)
                 # press 'q' to quit
                 if key & 0xFF == ord('q'):
@@ -331,7 +360,7 @@ if __name__ == '__main__':
 
     # Default params with commandline input
     parser = opts().parser
-    parser.add_argument('--os', default="linux", help='os')
+    parser.add_argument('--labelling', action='store_true', help='labeling mode', default=False)
     opt = parser.parse_args()
     
     opt.output_dir = f"./demo_output/{opt.load_model.split('/')[-2]}/{opt.load_model.split('/')[-1].split('.')[0]}/{opt.demo.split('/')[-1].split('.')[0]}"
@@ -403,8 +432,29 @@ if __name__ == '__main__':
     # Update dataset info/training params
     opt = opts().init(opt)
     
+    opt.gpus = [0]
     opt.c = 'custom_box'
     opt.arch = 'dlav1_34'
     opt.use_pnp = False
     print('rep_mode : ',opt.rep_mode)
+    print("labelling mode: ", opt.labelling)  
+    if opt.labelling:  
+        if not os.path.exists(os.path.join(opt.output_dir, "_output")):
+            os.makedirs(os.path.join(opt.output_dir, "_output"))
+            print("_output 디렉토리 생성됨")
+
+        else :
+            delete_count = 0
+            for filename in os.listdir(os.path.join(opt.output_dir, "_output")):
+                file_path = os.path.join(opt.output_dir, "_output", filename)
+                try:
+                    if os.path.isfile(file_path) or os.path.islink(file_path):
+                        os.unlink(file_path)
+                    elif os.path.isdir(file_path):
+                        shutil.rmtree(file_path)
+                        delete_count += 1  
+                except Exception as e:
+                    print(f'Failed to delete {file_path}. Reason: {e}')
+            print(f"이전 레이블링 정보 삭제됨({delete_count})")
+
     demo(opt, meta)
