@@ -73,6 +73,8 @@ def demo(opt, meta):
         print("start")
         
         test_mode = False
+        save_mode = False
+        save_count = 0
 
         test_count = 0
         marker_detector = CharucoDetector(debug=True)
@@ -88,6 +90,10 @@ def demo(opt, meta):
                 # cam.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 # continue
                 break
+
+            if save_mode:
+                out.write(frame)
+
             # 스레드 생성
             detector_thread = threading.Thread(target=lambda: (
                 setattr(threading.current_thread(), 'result', detector.run(frame, meta_inp=meta))
@@ -115,8 +121,6 @@ def demo(opt, meta):
 
             dets['obj_scale'] = dets['obj_scale'].reshape(100, -1)[0]
             out_img = image_dict['out_img_pred_0']
-            # 프레임 번호 표시
-            cv2.putText(out_img, f"Frame: {frame_idx}", (out_img.shape[1] - 100, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             
             marker_detected = marker_thread.result is not None
             box_detected = (np.array(dets['scores'])[0,:,0] > opt.center_thresh).any()
@@ -132,25 +136,25 @@ def demo(opt, meta):
                     # transform_matrix = 
                 except Exception as e:
                     print(f"homography error: {e}")
-                if transform_matrix is not None:
-                    warped_frame = cv2.warpPerspective(frame.copy(), transform_matrix, (2048, 3058))
-                    for i in range(len(marker_ids)):
-                        for j in range(4):  
-                            cv2.circle(warped_frame, (int(marker_detector.dst_points_aruco[marker_ids[i]][0][j][0]), \
-                                                        int(marker_detector.dst_points_aruco[marker_ids[i]][0][j][1])), \
-                                        1, (0, 0, 255), 2)
-                            if j == 0:
-                                cv2.putText(warped_frame, f"{marker_ids[i]}", (int(marker_detector.dst_points_aruco[marker_ids[i]][0][j][0]), \
-                                                                                int(marker_detector.dst_points_aruco[marker_ids[i]][0][j][1])), \
-                                                                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-                    cv2.putText(warped_frame, f"detected marker: {len(marker_ids)}", (10, 3058//4 - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
+                # if transform_matrix is not None:
+                #     warped_frame = cv2.warpPerspective(frame.copy(), transform_matrix, (2048, 3058))
+                #     for i in range(len(marker_ids)):
+                #         for j in range(4):  
+                #             cv2.circle(warped_frame, (int(marker_detector.dst_points_aruco[marker_ids[i]][0][j][0]), \
+                #                                         int(marker_detector.dst_points_aruco[marker_ids[i]][0][j][1])), \
+                #                         1, (0, 0, 255), 2)
+                #             if j == 0:
+                #                 cv2.putText(warped_frame, f"{marker_ids[i]}", (int(marker_detector.dst_points_aruco[marker_ids[i]][0][j][0]), \
+                #                                                                 int(marker_detector.dst_points_aruco[marker_ids[i]][0][j][1])), \
+                #                                                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                #     cv2.putText(warped_frame, f"detected marker: {len(marker_ids)}", (10, 3058//4 - 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
                     # cv2.imshow("warped_frame", warped_frame)
             if box_detected and transform_matrix is not None:
                 kps_reshaped = dets['kps'].reshape(-1, 1, 2)
                 kps_BEV = cv2.perspectiveTransform(kps_reshaped, transform_matrix)
                 kps_BEV = kps_BEV.reshape(-1, 2)
-                for i in range(len(kps_BEV)):
-                    cv2.circle(warped_frame, (int(kps_BEV[i][0]), int(kps_BEV[i][1])), 1, (0, 255, 255), 2)
+                # for i in range(len(kps_BEV)):
+                #     cv2.circle(warped_frame, (int(kps_BEV[i][0]), int(kps_BEV[i][1])), 1, (0, 255, 255), 2)
                     # cv2.imshow("warped_frame", warped_frame)
 
                 box_size_pixel = calc_box_size_pixel(dets['kps'])
@@ -173,34 +177,11 @@ def demo(opt, meta):
                 # except Exception as e:
                 #     print(f"y_length error: {e}, y_sum: {y_sum}, sum_count: {sum_count}")
                 
-                if opt.demo == 'webcam':
-                    print(f"obj_scale      - X: {dets['obj_scale'][0]:05.2f},   Y: {dets['obj_scale'][1]:05.2f},   Z: {dets['obj_scale'][2]:05.2f}",
-                            end='\n', flush=False)
-                    print(f"box pixel size - X: {box_size_pixel['x']:05.2f}px, Y: {box_size_pixel['y']:05.2f}px, Z: {box_size_pixel['z']:05.2f}px",
-                        end='\n', flush=False) 
-                    print(f"warped size    - X: {warped_box_size_pixel['x']:05.2f}px, Y: {warped_box_size_pixel['y']:05.2f}px, Z: {warped_box_size_pixel['z']:05.2f}px",
-                            end='\n\033[F\033[F\033[F', flush=True)
-                else:
-                    # pbar.write(f"obj_scale      - X: {dets['obj_scale'][0]:05.2f},   Y: {dets['obj_scale'][1]:05.2f},   Z: {dets['obj_scale'][2]:05.2f}")
-                    # pbar.write(f"box pixel size - X: {box_size_pixel['x']:05.2f}px, Y: {box_size_pixel['y']:05.2f}px, Z: {box_size_pixel['z']:05.2f}px")
-                    # pbar.write(f"warped size    - X: {warped_box_size_pixel['x']:05.2f}px, Y: {warped_box_size_pixel['y']:05.2f}px, Z: {warped_box_size_pixel['z']:05.2f}px")
-                    pbar.set_postfix({
-                        "obj_scale_X": f"{dets['obj_scale'][0]:05.2f}",
-                        "obj_scale_Y": f"{dets['obj_scale'][1]:05.2f}",
-                        "obj_scale_Z": f"{dets['obj_scale'][2]:05.2f}",
-                        "box_size_X": f"{box_size_pixel['x']:05.2f}px",
-                        "box_size_Y": f"{box_size_pixel['y']:05.2f}px",
-                        "box_size_Z": f"{box_size_pixel['z']:05.2f}px",
-                        "warped_X": f"{warped_box_size_pixel['x']:05.2f}px",
-                        "warped_Y": f"{warped_box_size_pixel['y']:05.2f}px",
-                        "warped_Z": f"{warped_box_size_pixel['z']:05.2f}px"
-                    })
+                    
                 # 계산된 dimension 표시
                 # ori = 3
                 colors = [(0, 255, 0), (128, 0, 128), (0, 128, 255)]
                 for i, (key, value) in enumerate([('X', x_length), ('Y', y_length), ('Z', z_length)]):
-                    # x_pos = int((dets['kps'][ori][0]) + float(dets['kps'][value[1]][0]) // 2)
-                    # y_pos = int((dets['kps'][ori][1]) + float(dets['kps'][value[1]][1]) // 2)
                     text = f"{key}: {value:.2f}cm"
                     # 텍스트 크기 측정
                     (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
@@ -209,55 +190,19 @@ def demo(opt, meta):
                     # 텍스트 그리기
                     cv2.putText(out_img, text, (10, 60 + 20 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colors[i], 1)
                 
-                # marker_edges = [[0,1], [0,2]]
-                # for i,edge in enumerate(marker_edges):
-                #     start_point = (int(info['marker_corners'][edge[0]][0]), int(info['marker_corners'][edge[0]][1]))
-                #     end_point = (int(info['marker_corners'][edge[1]][0]), int(info['marker_corners'][edge[1]][1]))
-                #     cv2.line(out_img, start_point, end_point, (0, 255, 0) if i == 0 else (0, 128, 255), 2)
-
-            # 창 크기 조절
-            window_name = 'out_img'
-            # cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)  # 크기 조절 가능한 창 생성
-            # cv2.imshow(window_name, out_img)
-            if opt.demo != 'webcam':
-                # 이미지로 저장
-                filename = f"frame_{frame_idx:04d}.png"
-                output_path = os.path.join(opt.output_dir, filename)
-                cv2.imwrite(output_path, out_img)
-                pbar.update(1)
-                # print(f"프레임 {idx} 저장됨: {output_path}")
-            if opt.labelling \
-                and ((frame_idx % (cam.get(cv2.CAP_PROP_FRAME_COUNT) // 20) == 0) \
-                        # or (frame_idx % (cam.get(cv2.CAP_PROP_FRAME_COUNT) // 30) == 20)
-                        ):
-                cv2.imwrite(f"{opt.output_dir}/_output/frame_{frame_idx:04d}.jpg", frame)
-                with open(f"{opt.output_dir}/_output/frame_{frame_idx:04d}.json", 'w') as f:
-                    kps = {}
-                    for i, n in enumerate([1,5,7,3,2,6,8,4]):
-                        kps[f"x{i+1}"] = float(dets['kps'][n-1][0])
-                        kps[f"y{i+1}"] = float(dets['kps'][n-1][1])
-                        kps[f"z{i+1}"] = 0 if i < 4 else 1
-                    info = {"metaData":"","inspRejectYn":"N","labelingInfo":[{"3DBox":{"location":[kps],"label":"box","type":"3DBox"}}]}
-                    json.dump(info, f, indent=2)
-            
-            if test_mode and frame_idx % (int(fps)//2) == 0:
-                if test_count < 10:
-                    test_count += 1
-                    data['obj_scale']["X"].append(float(dets['obj_scale'][0]))
-                    data['obj_scale']["Y"].append(float(dets['obj_scale'][1]))
-                    data['obj_scale']["Z"].append(float(dets['obj_scale'][2]))
-                    data['length']["X"].append(float(x_length))
-                    data['length']["Y"].append(float(y_length))
-                    data['length']["Z"].append(float(z_length))
-                    print(f"log saved #{test_count}")
-                else: 
-                        # 객체 크기 정보를 파일에 기록
-                    with open(f'dimension_log.json', 'w') as f:
-                        json.dump(data, f, indent=2)
-                        print(f"log saved into dimension_log.json")
-                    test_mode = False
-                    test_count = 0
+                print(f"obj_scale      - X: {dets['obj_scale'][0]:05.2f},   Y: {dets['obj_scale'][1]:05.2f},   Z: {dets['obj_scale'][2]:05.2f}",
+                        end='\n', flush=False)
+                print(f"box pixel size - X: {box_size_pixel['x']:05.2f}px, Y: {box_size_pixel['y']:05.2f}px, Z: {box_size_pixel['z']:05.2f}px",
+                    end='\n', flush=False) 
+                print(f"warped size    - X: {warped_box_size_pixel['x']:05.2f}px, Y: {warped_box_size_pixel['y']:05.2f}px, Z: {warped_box_size_pixel['z']:05.2f}px",
+                        end='\n\033[F\033[F\033[F', flush=True)
+                
             if opt.demo == 'webcam':
+                # 창 크기 조절
+                window_name = 'out_img'
+                cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)  # 크기 조절 가능한 창 생성
+                cv2.imshow(window_name, out_img)
+                
                 key = cv2.waitKey(1)
                 # press 'q' to quit
                 if key & 0xFF == ord('q'):
@@ -271,6 +216,18 @@ def demo(opt, meta):
                     marker_detector = CharucoDetector(debug=True)
                     print("reload")
                 
+                if key & 0xFF == ord('s'):
+                    if not save_mode:
+                        save_mode = True
+                        print("save mode on")
+                        save_count += 1
+                        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                        out = cv2.VideoWriter(f'output_{save_count}.mp4', fourcc, fps, (int(cam.get(3)), int(cam.get(4))))
+
+                    else:
+                        save_mode = False
+                        print("save mode off")
+
                 if key & 0xFF == ord('t'):
                     if test_mode:
                         test_mode = False
@@ -289,6 +246,62 @@ def demo(opt, meta):
                             }
                         }
                         test_mode = True
+
+                if test_mode and frame_idx % (int(fps)//2) == 0:
+                    if test_count < 10:
+                        test_count += 1
+                        data['obj_scale']["X"].append(float(dets['obj_scale'][0]))
+                        data['obj_scale']["Y"].append(float(dets['obj_scale'][1]))
+                        data['obj_scale']["Z"].append(float(dets['obj_scale'][2]))
+                        data['length']["X"].append(float(x_length))
+                        data['length']["Y"].append(float(y_length))
+                        data['length']["Z"].append(float(z_length))
+                        print(f"log saved #{test_count}")
+                    else: 
+                            # 객체 크기 정보를 파일에 기록
+                        with open(f'dimension_log.json', 'w') as f:
+                            json.dump(data, f, indent=2)
+                            print(f"log saved into dimension_log.json")
+                        test_mode = False
+                        test_count = 0
+            else :
+                # pbar.write(f"obj_scale      - X: {dets['obj_scale'][0]:05.2f},   Y: {dets['obj_scale'][1]:05.2f},   Z: {dets['obj_scale'][2]:05.2f}")
+                # pbar.write(f"box pixel size - X: {box_size_pixel['x']:05.2f}px, Y: {box_size_pixel['y']:05.2f}px, Z: {box_size_pixel['z']:05.2f}px")
+                # pbar.write(f"warped size    - X: {warped_box_size_pixel['x']:05.2f}px, Y: {warped_box_size_pixel['y']:05.2f}px, Z: {warped_box_size_pixel['z']:05.2f}px")
+                pbar.set_postfix({
+                    "obj_scale_X": f"{dets['obj_scale'][0]:05.2f}",
+                    "obj_scale_Y": f"{dets['obj_scale'][1]:05.2f}",
+                    "obj_scale_Z": f"{dets['obj_scale'][2]:05.2f}",
+                    "box_size_X": f"{box_size_pixel['x']:05.2f}px",
+                    "box_size_Y": f"{box_size_pixel['y']:05.2f}px",
+                    "box_size_Z": f"{box_size_pixel['z']:05.2f}px",
+                    "warped_X": f"{warped_box_size_pixel['x']:05.2f}px",
+                    "warped_Y": f"{warped_box_size_pixel['y']:05.2f}px",
+                    "warped_Z": f"{warped_box_size_pixel['z']:05.2f}px"
+                })
+
+                # 이미지로 저장
+                # 프레임 번호 표시
+                cv2.putText(out_img, f"Frame: {frame_idx}", (out_img.shape[1] - 100, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            
+                filename = f"frame_{frame_idx:04d}.png"
+                output_path = os.path.join(opt.output_dir, filename)
+                cv2.imwrite(output_path, out_img)
+                pbar.update(1)
+                if opt.labelling \
+                    and ((frame_idx % (cam.get(cv2.CAP_PROP_FRAME_COUNT) // 20) == 0) \
+                            # or (frame_idx % (cam.get(cv2.CAP_PROP_FRAME_COUNT) // 30) == 20)
+                            ):
+                    cv2.imwrite(f"{opt.output_dir}/_output/frame_{frame_idx:04d}.jpg", frame)
+                    with open(f"{opt.output_dir}/_output/frame_{frame_idx:04d}.json", 'w') as f:
+                        kps = {}
+                        for i, n in enumerate([1,5,7,3,2,6,8,4]):
+                            kps[f"x{i+1}"] = float(dets['kps'][n-1][0])
+                            kps[f"y{i+1}"] = float(dets['kps'][n-1][1])
+                            kps[f"z{i+1}"] = 0 if i < 4 else 1
+                        info = {"metaData":"","inspRejectYn":"N","labelingInfo":[{"3DBox":{"location":[kps],"label":"box","type":"3DBox"}}]}
+                        json.dump(info, f, indent=2)
+
             frame_idx += 1
         
                         
@@ -363,13 +376,14 @@ if __name__ == '__main__':
     parser.add_argument('--labelling', action='store_true', help='labeling mode', default=False)
     opt = parser.parse_args()
     
-    opt.output_dir = f"./demo_output/{opt.load_model.split('/')[-2]}/{opt.load_model.split('/')[-1].split('.')[0]}/{opt.demo.split('/')[-1].split('.')[0]}"
-    # 출력 디렉토리가 없으면 생성
-    if not os.path.exists(opt.output_dir):
-        os.makedirs(opt.output_dir)
-        print(f"출력 디렉토리 생성됨: {opt.output_dir}")
-    else:
-        print(f"출력 디렉토리 : {opt.output_dir}")
+    if opt.demo != 'webcam':
+        opt.output_dir = f"./demo_output/{opt.load_model.split('/')[-2]}/{opt.load_model.split('/')[-1].split('.')[0]}/{opt.demo.split('/')[-1].split('.')[0]}"
+        # 출력 디렉토리가 없으면 생성
+        if not os.path.exists(opt.output_dir):
+            os.makedirs(opt.output_dir)
+            print(f"출력 디렉토리 생성됨: {opt.output_dir}")
+        else:
+            print(f"출력 디렉토리 : {opt.output_dir}")
 
     # Local machine configuration example for CenterPose
     # opt.c = 'cup' # Only meaningful when enables show_axes option
