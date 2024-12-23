@@ -200,6 +200,8 @@ def demo(opt, meta):
             if opt.demo == 'webcam':
                 # 창 크기 조절
                 window_name = 'out_img'
+                cv2.putText(out_img, f"Frame: {frame_idx}", (out_img.shape[1] - 100, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+
                 cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)  # 크기 조절 가능한 창 생성
                 cv2.imshow(window_name, out_img)
                 

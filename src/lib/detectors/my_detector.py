@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import cv2
 import math
+from collections import deque
 
 class MyDebugger(Debugger):
     def __init__(self, *args, **kwargs):
@@ -21,18 +22,6 @@ class MyDebugger(Debugger):
         self.edges = [[2, 4], [2, 6], [6, 8], [4, 8],
                       [1, 2], [3, 4], [5, 6], [7, 8],
                       [1, 3], [1, 5], [3, 7], [5, 7]]
-
-        self.accumulated_kps = [] # N , 16
-    
-    def check_different_pose(self, kps):
-        prev_kps = self.accumulated_kps.reshape(-1,8,2)
-        kps_repeated = np.tile(kps, (prev_kps.shape[0], 1, 1))
-        diff = prev_kps - kps_repeated
-
-        if diff.mean() > 10:
-            self.accumulated_kps = np.concatenate([self.accumulated_kps, kps], axis=0)
-        else:
-            self.accumulated_kps = np.array(kps)
 
     def add_coco_hp(self, points, img_id='default', pred_flag='pred', PAPER_DISPLAY=False):
         # self.check_different_pose(points)
@@ -93,7 +82,34 @@ class MyDetector(ObjectPoseDetector):
     def __init__(self, opt):
         super(MyDetector, self).__init__(opt)
 
+        self.ema_kps = None
+        self.period = 5
+        self.kps_history = deque(maxlen=self.period) # N , 16
+    
+    # def check_different_pose(self, kps):
+    #     prev_kps = self.accumulated_kps.reshape(-1,8,2)
+    #     kps_repeated = np.tile(kps, (prev_kps.shape[0], 1, 1))
+    #     diff = prev_kps - kps_repeated
 
+    #     if diff.mean() > 10:
+    #         self.accumulated_kps = np.concatenate([self.accumulated_kps, kps], axis=0)
+    #     else:
+    #         self.accumulated_kps = np.array(kps)
+    
+    def calc_emakps(self):
+        # kps_history = self.kps_history.copy()
+
+        curr_period = len(self.kps_history)
+        weights = np.linspace(1, curr_period, curr_period) / np.sum(np.linspace(1, curr_period, curr_period))
+        ema_kps = np.sum(np.array(self.kps_history) * weights[:, None], axis=0)
+        # try:
+        #     ema_kps = self.kps_history[-1]
+        # except:
+        #     print(len(self.kps_history))
+        #     ema_kps = self.kps_history[0]
+
+        return ema_kps
+    
     def run(self, image_or_path_or_tensor, filename=None, meta_inp={}, preprocessed_flag=False):
         load_time, pre_time, net_time, dec_time, post_time = 0, 0, 0, 0, 0
         merge_time, track_time, pnp_time, tot_time = 0, 0, 0, 0
@@ -232,9 +248,10 @@ class MyDetector(ObjectPoseDetector):
 
         else : 
             dets = detections[0]
-
-            dets['kps'] *= self.opt.input_res / self.opt.output_res # *= 512 / 128
-
+            
+            dets['kps'] *= self.opt.input_res / self.opt.output_res # -> *= 512 / 128
+            # print(f'dets["kps"]: {dets["kps"].shape}') # [1, 100, 16]
+            
             std_tensor = torch.tensor(self.opt.std, device=images.device).view(1, 3, 1, 1)
             mean_tensor = torch.tensor(self.opt.mean, device=images.device).view(1, 3, 1, 1)
 
@@ -257,8 +274,18 @@ class MyDetector(ObjectPoseDetector):
                 debugger.add_img(img[i], img_id=f'out_img_pred_{i}')
                 for j in range(len(dets['scores'][i])): 
                     if dets['scores'][i][j][0] > self.opt.center_thresh:
-                        debugger.add_coco_hp(dets['kps'][i][j], img_id=f'out_img_pred_{i}')
                         
+                        self.kps_history.append(dets['kps'][i][j].copy())
+                        # print(f"detected kps: {dets['kps'][i][j].shape}")
+                        
+                        ema_kps = self.calc_emakps()
+                        debugger.add_coco_hp(ema_kps, img_id=f'out_img_pred_{i}')
+                        # debugger.add_coco_hp(dets['kps'][i][j], img_id=f'out_img_pred_{i}')
+                        
+                        # print(f"ema_kps: {ema_kps}")
+                        # print(f"dets_kps: {dets['kps'][i][j]}")
+                        break
+
                 # print(f'output["hm_hp"]: {output["hm_hp"].shape}') # [1 * 8 * 128 * 128]
                 pred = debugger.gen_colormap_hp(output['hm_hp'][i].detach().cpu().numpy())
                 debugger.add_blend_img(img[i], pred, f'out_hmhp_pred_{i}')

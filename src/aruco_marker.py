@@ -292,7 +292,7 @@ if __name__ == "__main__":
     # 비디오 저장을 위한 설정
     fourcc = cv2.VideoWriter_fourcc(*'XVID')
     fps = cap.get(cv2.CAP_PROP_FPS)
-    out = cv2.VideoWriter('output.avi', fourcc, fps, (int(cap.get(3)), int(cap.get(4))))
+    out = cv2.VideoWriter('output.mp4', fourcc, fps, (int(cap.get(3)), int(cap.get(4))))
     
     while True:
         ret, frame = cap.read()
