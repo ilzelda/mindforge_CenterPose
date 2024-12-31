@@ -125,6 +125,13 @@ class ObjectPoseDataset(data.Dataset):
         'box_tea_2': [20, 20.5, 8],
         'box_tissue_1': [11.5, 9.5, 23.5],
         'box_tissue_2': [11.5, 23.5, 9.5],
+
+        'test_barcode_1': [23, 26, 12],
+        'test_barcode_2': [23, 12, 26],
+        'test_black_tea_1': [18, 8, 20.5],
+        'test_black_tea_2': [8, 20.5, 18],
+        'test_tea_1': [20.5, 8, 20],
+        'test_tea_2': [20, 8, 20.5],
     }
 
     def __init__(self, opt, split):
@@ -273,7 +280,7 @@ class ObjectPoseDataset(data.Dataset):
 
         self.bg_ratio = 0.2
         bg_paths = []
-        for root, dirs, files in os.walk("/mnt/SUN397/SUN397"):
+        for root, dirs, files in os.walk("/mnt/SUN397"):
             for file in files:
                 if file.endswith(".jpg"):
                     bg_paths.append(os.path.join(root, file))
@@ -1110,30 +1117,7 @@ class ObjectPoseDataset(data.Dataset):
             else : 
                 ann = anns["labelingInfo"][k]["3DBox"]
                 if self.opt.c != 'parcel':
-                    if path_json.split('/')[-3] == 'box_monitor_1':
-                        ann['scale'] = self.dimension_ref_custom['box_monitor_1']
-                    elif path_json.split('/')[-3] == 'box_monitor_2':
-                        ann['scale'] = self.dimension_ref_custom['box_monitor_2']
-                    elif path_json.split('/')[-3] == 'box_barcode_1':
-                        ann['scale'] = self.dimension_ref_custom['box_barcode_1']
-                    elif path_json.split('/')[-3] == 'box_barcode_2':
-                        ann['scale'] = self.dimension_ref_custom['box_barcode_2']
-                    elif path_json.split('/')[-3] == 'box_blacktea_1':
-                        ann['scale'] = self.dimension_ref_custom['box_blacktea_1']
-                    elif path_json.split('/')[-3] == 'box_blacktea_2':
-                        ann['scale'] = self.dimension_ref_custom['box_blacktea_2']
-                    elif path_json.split('/')[-3] == 'box_maxim_1':
-                        ann['scale'] = self.dimension_ref_custom['box_maxim_1']
-                    elif path_json.split('/')[-3] == 'box_maxim_2':
-                        ann['scale'] = self.dimension_ref_custom['box_maxim_2']
-                    elif path_json.split('/')[-3] == 'box_tea_1':
-                        ann['scale'] = self.dimension_ref_custom['box_tea_1']
-                    elif path_json.split('/')[-3] == 'box_tea_2':
-                        ann['scale'] = self.dimension_ref_custom['box_tea_2']
-                    elif path_json.split('/')[-3] == 'box_tissue_1':
-                        ann['scale'] = self.dimension_ref_custom['box_tissue_1']
-                    elif path_json.split('/')[-3] == 'box_tissue_2':
-                        ann['scale'] = self.dimension_ref_custom['box_tissue_2']
+                    ann['scale'] = self.dimension_ref_custom[path_json.split('/')[-3]]
 
             # Todo: Only for chair category for now
             if 'symmetric' in ann:
@@ -1156,8 +1140,12 @@ class ObjectPoseDataset(data.Dataset):
                 xy_dict = ann["location"][0]
                 # label = [[int(xy_dict[f"x{i}"]), int(xy_dict[f"y{i}"])] for i in [9]+list(range(1, 9))]
                 corner_order = [9,8,4,5,1,7,3,6,2]
-                label = [[int(xy_dict[f"x{i}"]), int(xy_dict[f"y{i}"])] for i in corner_order]  
-
+                try:
+                    label = [[int(xy_dict[f"x{i}"]), int(xy_dict[f"y{i}"])] for i in corner_order]  
+                except ValueError as e:
+                    print(f'{e} : at index : {index}')
+                    label = [[round(float(xy_dict[f"x{i}"])), round(float(xy_dict[f"y{i}"]))] for i in corner_order]  
+                    
                 pts_ori = np.array(label)
 
             # Only apply rotation on gt annotation when symmetry exists
