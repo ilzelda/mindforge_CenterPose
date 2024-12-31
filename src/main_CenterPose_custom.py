@@ -18,6 +18,7 @@ from lib.datasets.dataset_factory import collate_fn_filtered
 from lib.trains.train_factory import train_factory
 import time
 import numpy as np
+from torch.optim.lr_scheduler import CosineAnnealingLR
 
 from lib.datasets.dataset_combined import ObjectPoseDataset
 
@@ -51,7 +52,13 @@ def main(opt):
     if opt.load_model != '':
         model, optimizer, start_epoch = load_model(
             model, opt.load_model, optimizer, opt.resume, opt.lr, opt.lr_step)
-
+    
+    scheduler = CosineAnnealingLR(
+                                    optimizer,
+                                    T_max=opt.num_epochs,  # 하나의 사이클이 끝나는 epoch 수 (일반적으로 전체 epoch)
+                                    eta_min=1e-7           # LR가 도달할 최소값(필요 시 조절)
+                                )
+    
     Trainer = train_factory[opt.task]
     trainer = Trainer(opt, model, optimizer)
     trainer.set_device(opt.gpus, opt.chunk_sizes, opt.device)
@@ -102,6 +109,7 @@ def main(opt):
         mark = epoch if opt.save_all else 'last'
         log_dict_train, _, log_imgs = trainer.train(epoch, train_loader)
         logger.write('epoch: {} | '.format(epoch))  # txt logging
+        # else : logger.write(f"Epoch [{epoch+1}/{opt.num_epochs}] - LR: {scheduler.get_last_lr()[0]} | ")
         for k, v in log_dict_train.items():
             logger.scalar_summary('train_{}'.format(k), v, epoch)  # tensorboard logging
             logger.write('train_{} {:8f} | '.format(k, v))  # txt logging
@@ -124,9 +132,12 @@ def main(opt):
                        epoch, model, optimizer)
         logger.write('\n\n')
 
+        # if opt.custom:
+        #     scheduler.step()
+        # else:
         if epoch in opt.lr_step:
             save_model(os.path.join(opt.save_dir, f'{opt.c}_{epoch}.pth'),
-                       epoch, model, optimizer)
+                    epoch, model, optimizer)
             lr = opt.lr * (0.1 ** (opt.lr_step.index(epoch) + 1))
             print('Drop LR to', lr)
             for param_group in optimizer.param_groups:
@@ -143,7 +154,14 @@ if __name__ == '__main__':
 
     # Local configuration
     # opt.c = 'custom_box'
-    opt.c = 'parcel'
+    # opt.c = 'parcel'
+    # opt.c = 'case3_filtered'
+    # opt.c = 'case4_filtered'
+    # opt.c = 'case5_filtered'
+    # opt.c = 'case6_filtered'
+    # opt.c = 'case7_filtered'
+    # opt.c = 'case8_filtered'
+    opt.c = 'case9_filtered'
 
     opt.arch='dlav1_34'
     opt.obj_scale = True
@@ -157,6 +175,8 @@ if __name__ == '__main__':
     opt.lr_step = '90,120'
     opt.batch_size = 4
     opt.lr = 6e-5
+    # opt.lr = 6e-7
+
     opt.gpus = '1'
     opt.num_workers = 4
     opt.print_iter = 5
@@ -216,7 +236,7 @@ if __name__ == '__main__':
     # custom options
     opt.custom = True
     opt.num_workers = 0
-    opt.batch_size = 4
+    opt.batch_size = 16
     # opt.obj_scale_weight = 0
     # opt.obj_scale = False
     
@@ -224,6 +244,8 @@ if __name__ == '__main__':
         opt.data_dir = '/home/CenterPose/data/custom_box'
     elif opt.c == 'parcel':
         opt.data_dir = '/home/CenterPose/data/parcel'
+    elif 'case' in opt.c:
+        opt.data_dir = f'/home/CenterPose/data/{opt.c}'
 
     os.environ['PYTORCH_CUDA_ALLOC_CONF'] = 'max_split_size_mb:512'
 
