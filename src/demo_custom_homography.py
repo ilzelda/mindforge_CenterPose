@@ -190,6 +190,8 @@ def demo(opt, meta):
                     # 텍스트 그리기
                     cv2.putText(out_img, text, (10, 60 + 20 * i), cv2.FONT_HERSHEY_SIMPLEX, 0.5, colors[i], 1)
                 
+                
+            if opt.demo == 'webcam':
                 print(f"obj_scale      - X: {dets['obj_scale'][0]:05.2f},   Y: {dets['obj_scale'][1]:05.2f},   Z: {dets['obj_scale'][2]:05.2f}",
                         end='\n', flush=False)
                 print(f"box pixel size - X: {box_size_pixel['x']:05.2f}px, Y: {box_size_pixel['y']:05.2f}px, Z: {box_size_pixel['z']:05.2f}px",
@@ -197,7 +199,6 @@ def demo(opt, meta):
                 print(f"warped size    - X: {warped_box_size_pixel['x']:05.2f}px, Y: {warped_box_size_pixel['y']:05.2f}px, Z: {warped_box_size_pixel['z']:05.2f}px",
                         end='\n\033[F\033[F\033[F', flush=True)
                 
-            if opt.demo == 'webcam':
                 # 창 크기 조절
                 window_name = 'out_img'
                 cv2.putText(out_img, f"Frame: {frame_idx}", (out_img.shape[1] - 100, 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
@@ -270,17 +271,17 @@ def demo(opt, meta):
                 # pbar.write(f"obj_scale      - X: {dets['obj_scale'][0]:05.2f},   Y: {dets['obj_scale'][1]:05.2f},   Z: {dets['obj_scale'][2]:05.2f}")
                 # pbar.write(f"box pixel size - X: {box_size_pixel['x']:05.2f}px, Y: {box_size_pixel['y']:05.2f}px, Z: {box_size_pixel['z']:05.2f}px")
                 # pbar.write(f"warped size    - X: {warped_box_size_pixel['x']:05.2f}px, Y: {warped_box_size_pixel['y']:05.2f}px, Z: {warped_box_size_pixel['z']:05.2f}px")
-                pbar.set_postfix({
-                    "obj_scale_X": f"{dets['obj_scale'][0]:05.2f}",
-                    "obj_scale_Y": f"{dets['obj_scale'][1]:05.2f}",
-                    "obj_scale_Z": f"{dets['obj_scale'][2]:05.2f}",
-                    "box_size_X": f"{box_size_pixel['x']:05.2f}px",
-                    "box_size_Y": f"{box_size_pixel['y']:05.2f}px",
-                    "box_size_Z": f"{box_size_pixel['z']:05.2f}px",
-                    "warped_X": f"{warped_box_size_pixel['x']:05.2f}px",
-                    "warped_Y": f"{warped_box_size_pixel['y']:05.2f}px",
-                    "warped_Z": f"{warped_box_size_pixel['z']:05.2f}px"
-                })
+                # pbar.set_postfix({
+                #     "obj_scale_X": f"{dets['obj_scale'][0]:05.2f}",
+                #     "obj_scale_Y": f"{dets['obj_scale'][1]:05.2f}",
+                #     "obj_scale_Z": f"{dets['obj_scale'][2]:05.2f}",
+                #     "box_size_X": f"{box_size_pixel['x']:05.2f}px",
+                #     "box_size_Y": f"{box_size_pixel['y']:05.2f}px",
+                #     "box_size_Z": f"{box_size_pixel['z']:05.2f}px",
+                #     "warped_X": f"{warped_box_size_pixel['x']:05.2f}px",
+                #     "warped_Y": f"{warped_box_size_pixel['y']:05.2f}px",
+                #     "warped_Z": f"{warped_box_size_pixel['z']:05.2f}px"
+                # })
 
                 # 이미지로 저장
                 # 프레임 번호 표시
